@@ -4,8 +4,7 @@ capstone
 
 data
 
-Progress.docx
-~$ogress.docx
+*.docx
 
 __pycache__
 
