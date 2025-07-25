@@ -1,18 +1,22 @@
+#----- Standard Libraries -----
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, ConcatDataset, random_split
+from torch.utils.data import DataLoader, ConcatDataset
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Subset
+from collections import Counter
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-
+#----- Custom Imports -----
 from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram
 from models.cnn_encoders import BasicSpectrogramClassifier
 
-
+#----- Paths and the Configuration -----
 BASE_DIR = r'F:\Capstone\DFCA'
 FEATURES_DIR = os.path.join(BASE_DIR,'data','features')
 CHECKPOINTS_DIR = os.path.join(r'F:\CapStone\DFCA','checkpoints')
@@ -23,30 +27,27 @@ LEARNING_RATE = 1e-4
 NUM_EPOCH = 5
 
 SPECTROGRAM_TYPE = 'stft'
-ENCODER_NAME = 'efficient_b0'
+ENCODER_NAME = 'resnet18'
 PRETRAINED_ENCODER = True
 
-
-TRAIN_NORMAL_RATIO = 0.7
-VAL_NORMAL_RATIO = 0.15
-TEST_NORMAL_RATIO = 0.15
-
-TRAIN_ABNORMAL_RATIO = 0.7
-VAL_ABNORMAL_RATIO = 0.15
-TEST_ABNORMAL_RATIO = 0.15
-
+#----- Setting the device -----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using Device: {device}")
 
-
+#----- Training Function -----
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, model_save_path):
     best_val_auc = -1
+    best_val_loss = float('inf')
 
+    train_losses = []
+    val_losses = []
+
+    #----- Training Loop -----
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
-        # all_labels = []
-        # all_preds = []
+        all_labels = []
+        all_preds = []
 
         print(f"\nEpoch {epoch+1} / {num_epochs}")
 
@@ -64,15 +65,27 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
             #For AUC calculation
             probabilities = torch.softmax(outputs, dim=1)[:,1]
-            # all_labels.extend(labels.cpu().numpy())
-            # all_preds.extend(probabilities.cpu().detach().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            all_preds.extend(probabilities.cpu().detach().numpy())
 
+        #----- Epoch Metrics -----
         epoch_loss = running_loss / len(train_loader.dataset)
-        # train_auc = roc_auc_score(all_labels, all_preds)
-        print(f"Train Loss: {epoch_loss:.4f}")#, Train AUC: {train_auc:.4f}")
+        train_auc = roc_auc_score(all_labels, all_preds)
+        print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}")
 
+        #----- Validation Evaluation -----
         val_loss, val_auc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
 
+        train_losses.append(epoch_loss)
+        val_losses.append(val_loss)
+
+        #----- Save Best Model (Loss-Based) -----
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), model_save_path.replace('.pth', '_best_loss.pth'))
+            print(f"Model saved (best val loss: {best_val_loss:.4f})")
+        
+        #----- Svae Best Model (AUC Based) -----
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             torch.save(model.state_dict(), model_save_path)
@@ -80,7 +93,19 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         else:
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
 
+    #Plotting the train and validation Loss
+    plt.figure(figsize=(8,5))
+    plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
+    plt.plot(range(1,num_epochs+1), val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Train/Validation Loss over Epochs')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_loss_curve_{SPECTROGRAM_TYPE}.png'))
+    plt.show()
 
+#----- Evaluation Function -----
 def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     model.eval()
     running_loss = 0.0
@@ -109,7 +134,8 @@ def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
         
         print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}")
         return avg_loss, auc_score, all_labels, all_preds
-    
+
+#----- Partial AUC Calculation -----    
 def calculate_pAUC(labels, preds, max_fpr = 0.1):
 
     """
@@ -127,10 +153,8 @@ def calculate_pAUC(labels, preds, max_fpr = 0.1):
     fpr, tpr, _ = roc_curve(labels, preds)
     #filter for FPR <= max_fpr
     mask = fpr <= max_fpr
-    fpr_filtered = fpr[mask]
-    tpr_filtered = tpr[mask]
-
-    #Add(max_fpr, inerpolated_tpr) if max_fpr is not exactly in fpr_filtered
+    fpr_filtered, tpr_filtered = fpr[mask], tpr[mask] 
+     
     if fpr_filtered.max() < max_fpr:
         if len(fpr) < 2:
             return 0.0
@@ -172,6 +196,7 @@ def calculate_pAUC(labels, preds, max_fpr = 0.1):
     pauc_score = auc(fpr_filtered, tpr_filtered) / max_fpr
     return pauc_score
 
+#----- Main Training Pipeline -----
 def main():
     transform = ZScoreNormalizeSpectrogram()
 
@@ -196,42 +221,46 @@ def main():
         print(f"Error loading abnormal dataset: {error}")
         return
 
-    #==== Normal Splitting ====
-    num_normal = len(full_normal_dataset)
-    train_normal_size = int(TRAIN_NORMAL_RATIO * num_normal)
-    val_normal_size = int(VAL_NORMAL_RATIO * num_normal)
-    test_normal_size = num_normal - train_normal_size - val_normal_size
+    #=== Combine datasets and create the labels ===
+    combined_dataset = ConcatDataset([full_normal_dataset, full_abnormal_dataset])
+    combined_labels = [0] * len(full_normal_dataset) + [1] * len(full_abnormal_dataset)
+    indices = list(range(len(combined_dataset)))
 
-    train_normal_dataset, val_normal_dataset,test_normal_dataset = random_split(
-        full_normal_dataset, [train_normal_size, val_normal_size,test_normal_size],
-        generator = torch.Generator().manual_seed(42)
+    #=== Stratified Split of Train/Val/Test ===
+    train_idx, temp_idx, _,_temp_labels = train_test_split(
+        indices, combined_labels, test_size=0.3, stratify= combined_labels, random_state=42
     )
 
-    print(f"Normal data split: Train = {len(train_normal_dataset)}, val = {len(val_normal_dataset)}, Test = {len(test_normal_dataset)}")
-
-    #=== Abnormal Splitting ===
-    num_abnormal = len(full_abnormal_dataset)
-    train_abnormal_size = int(TRAIN_ABNORMAL_RATIO * num_abnormal)
-    val_abnormal_size = int(VAL_ABNORMAL_RATIO * num_abnormal)
-    test_abnormal_size = num_abnormal - train_abnormal_size - val_abnormal_size
-
-    train_abnormal_dataset, val_abnormal_dataset, test_abnormal_dataset = random_split(
-        full_abnormal_dataset, [train_abnormal_size,val_abnormal_size, test_abnormal_size],
-        generator = torch.Generator().manual_seed(42)
+    val_idx, test_idx = train_test_split(
+        temp_idx, test_size=0.5, stratify=_temp_labels, random_state=42
     )
-    print(f"Abnormal data split: Train = {len(train_abnormal_dataset)}, val = {len(val_abnormal_dataset)}, Test = {len(test_abnormal_dataset)}")
 
+    #=== Creating Subsets ===
+    train_dataset = Subset(combined_dataset, train_idx)
+    val_dataset = Subset(combined_dataset, val_idx)
+    test_dataset = Subset(combined_dataset, test_idx)
 
-    # === 3. Define Loaders by combining the normal + abnormal ===#
-    combined_train_dataset = ConcatDataset([train_normal_dataset, train_abnormal_dataset])
-    train_loader = DataLoader(combined_train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    print(f"Training Loader Contains {len(train_normal_dataset)} normal + {len(train_abnormal_dataset)} abnormal samples.")
+    print(f"Stratified Split Sizes: Train = {len(train_dataset)}, Val = {len(val_dataset)}, Test = {len(test_dataset)}")
 
-    combined_val_dataset = ConcatDataset([val_normal_dataset, val_abnormal_dataset])
-    val_loader = DataLoader(combined_val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
-    print(f"Validation Loader contains {len(val_normal_dataset)} normal + {len(val_abnormal_dataset)} abnormal samples.")
+    train_labels = [combined_labels[i] for i in train_idx]
+    val_labels = [combined_labels[i] for i in val_idx]
+    test_labels = [combined_labels[i] for i in test_idx]
 
+    train_count = Counter(train_labels)
+    val_count = Counter(val_labels)
+    test_count = Counter(test_labels)
 
+    print("\n--- Split Label Distribution (Stratified) ---")
+    print(f"Train Set:     Normal = {train_count[0]}, Abnormal = {train_count[1]}, Total = {len(train_labels)}")
+    print(f"Validation Set: Normal = {val_count[0]}, Abnormal = {val_count[1]}, Total = {len(val_labels)}")
+    print(f"Test Set:      Normal = {test_count[0]}, Abnormal = {test_count[1]}, Total = {len(test_labels)}")
+
+    #=== DataLoaders ===
+    train_loader = DataLoader(train_dataset, batch_size= BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+
+    #=== Model Setup ===
     model = BasicSpectrogramClassifier(
         encoder_name=ENCODER_NAME, 
         pretrained=PRETRAINED_ENCODER, 
@@ -243,8 +272,10 @@ def main():
 
     model_save_path = os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_{SPECTROGRAM_TYPE}_best_model.pth')
     
+    #=== Training ===
     train_model(model, train_loader, val_loader, criterion,optimizer,NUM_EPOCH,model_save_path)
 
+    #=== Final Test Evaluation ===
     print("\n---Final Test Evaluation ---")
     
     if not os.path.exists(model_save_path):
@@ -256,12 +287,7 @@ def main():
     model.load_state_dict(torch.load(model_save_path))
     model.eval()
 
-    combined_test_dataset = ConcatDataset([test_normal_dataset, test_abnormal_dataset])
-    test_loader_combined = DataLoader(combined_test_dataset,batch_size=BATCH_SIZE,shuffle=False,num_workers=0)
-    print(f"Combined Test Loader Contains {len(test_normal_dataset)} normal + {len(test_abnormal_dataset)} abnormal samples.")
-
-
-    _,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader_combined,criterion, "Test")
+    _,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
 
     if len(np.unique(all_labels_test)) > 1: 
         final_auc = roc_auc_score(all_labels_test, all_preds_test)
