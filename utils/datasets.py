@@ -13,47 +13,50 @@ class SpectrogramDataset(Dataset):
             spec_type(str): 'stft' for Log-Mel Spectrograms or 'cqt' for CQT Spectograms
         """
 
-        self.data_dir = os.path.join(data_dir, category, spec_type)
+        self.data_dir = data_dir
+        self.category = category 
         self.transform = transform
         self.spec_type = spec_type
+        self.all_file_paths = []
+        self.labels = [] # 0 for normal, 1 for abnormal
         
-        
-        if not os.path.exists(self.data_dir):
-            raise FileNotFoundError(f"Data directory not found: {self.data_dir}")
-        
-        self.file_list = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
-        if not self.file_list:
-            raise ValueError(f"No .npy files found in {self.data_dir}. Please ensure preprocessing ran correctly and files were saved.")
-        
-        #Assign labels: 0 for normal, 1 for Abnormal
-        self.label = 0 if category == 'normal' else 1
+        #=== Iterating over the folders ===
+        for id_folder in os.listdir(self.data_dir):
+            id_folder_path = os.path.join(self.data_dir, id_folder)
 
+            if os.path.isdir(id_folder_path) and id_folder.startswith('id_'):
+                category_path = os.path.join(id_folder_path, self.category, self.spec_type)
+
+                if os.path.exists(category_path) and os.path.isdir(category_path):
+                    for filename in os.listdir(category_path):
+                        if filename.endswith('.npy'):
+                            self.all_file_paths.append(os.path.join(category_path, filename))
+                            self.labels.append(0 if self.category == 'normal' else 1)
+                else:
+                    print(f"Warning: Category path not found for {os.path.join(id_folder, self.category, self.spec_type)}")
+        if not self.all_file_paths:
+            raise FileNotFoundError(f"No {self.spec_type} files found for category '{self.category}' under {self.data_dir}.  check your paths and a folder structure")
+        
+        
     def __len__(self):
-        return len(self.file_list)
+        return len(self.all_file_paths)
         
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
+        spec_path = self.all_file_paths[idx] # type: ignore
+        spectrogram = np.load(spec_path).astype(np.float32)
 
-        spec_name = self.file_list[idx] # type: ignore
-        spec_path = os.path.join(self.data_dir, spec_name)
-
-        #Load the Spectrogram (numpy array)
-        spectrogram = np.load(spec_path)
-
-        #Ensure 3D shape: (channels, height, width) 
-        #Spectrograms are typically (frequency_bins, time_frames)
-        spectrogram = np.expand_dims(spectrogram, axis=0)
-
-        #Convert to PyTorch tensor (float32 is common)
-        spectrogram = torch.from_numpy(spectrogram).float()
-
-        #Apply transform if any
+        if spectrogram.ndim == 2:
+            spectrogram = np.expand_dims(spectrogram, axis=0)
+        
         if self.transform:
-            spectrogram = self.transform(spectrogram)
+            spectrogram = self.transform(torch.from_numpy(spectrogram))
+        
+        label = self.labels[idx] # type: ignore
 
-        sample = {'spectrogram': spectrogram, 'label': self.label}
-        return sample
+        return {'spectrogram': spectrogram, 'label': label, 'path': spec_path}
+        
         
 class NormalizeSpectrogram:
     def __call__(self, spectrogram):
