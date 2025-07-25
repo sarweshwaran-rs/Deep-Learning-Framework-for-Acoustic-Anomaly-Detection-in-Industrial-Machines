@@ -41,6 +41,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
     train_losses = []
     val_losses = []
+    train_aucs = []
+    val_aucs = []
 
     #----- Training Loop -----
     for epoch in range(num_epochs):
@@ -71,13 +73,14 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         #----- Epoch Metrics -----
         epoch_loss = running_loss / len(train_loader.dataset)
         train_auc = roc_auc_score(all_labels, all_preds)
+        train_losses.append(epoch_loss)
+        train_aucs.append(train_auc)
         print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}")
 
         #----- Validation Evaluation -----
         val_loss, val_auc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
-
-        train_losses.append(epoch_loss)
         val_losses.append(val_loss)
+        val_aucs.append(val_auc)
 
         #----- Save Best Model (Loss-Based) -----
         if val_loss < best_val_loss:
@@ -86,7 +89,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             print(f"Model saved (best val loss: {best_val_loss:.4f})")
         
         #----- Svae Best Model (AUC Based) -----
-        if val_auc > best_val_auc:
+        if not np.isnan(val_auc) and val_auc > best_val_auc:
             best_val_auc = val_auc
             torch.save(model.state_dict(), model_save_path)
             print(f"Model saved to {model_save_path} with improved AUC: {best_val_auc:.4f}")
@@ -94,15 +97,28 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
 
     #Plotting the train and validation Loss
-    plt.figure(figsize=(8,5))
+    plt.figure(figsize=(10,5))
+    plt.subplot(1,2,1)
     plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
-    plt.plot(range(1,num_epochs+1), val_losses, label='Validation Loss')
+    plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Train/Validation Loss over Epochs')
     plt.legend()
     plt.grid(True)
-    plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_loss_curve_{SPECTROGRAM_TYPE}.png'))
+
+    #Plotting AUC
+    plt.subplot(1,2,2)
+    plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
+    plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
+    plt.xlabel('Epoch')
+    plt.ylabel('AUC')
+    plt.title('Train/Validation AUC ovr Epochs')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_metrics_curve_{SPECTROGRAM_TYPE}.png'))
     plt.show()
 
 #----- Evaluation Function -----
@@ -192,6 +208,8 @@ def calculate_pAUC(labels, preds, max_fpr = 0.1):
     #calculate AUC from the filtered points
     if len(fpr_filtered) < 2:
         return 0.0
+    if max_fpr == 0:
+        return 0.0 if np.all(fpr_filtered == 0) else float('nan')
     
     pauc_score = auc(fpr_filtered, tpr_filtered) / max_fpr
     return pauc_score
@@ -201,7 +219,7 @@ def main():
     transform = ZScoreNormalizeSpectrogram()
 
     # === Load all normal and abnormal data first ===
-    print(f"Attempting to load normal data from : {os.path.join(FEATURES_DIR,'normal',SPECTROGRAM_TYPE)}")
+    print(f"Attempting to load normal data for : '{SPECTROGRAM_TYPE}' from: {FEATURES_DIR}")
     try:
         full_normal_dataset = SpectrogramDataset(
             data_dir=FEATURES_DIR, category='normal' , transform=transform, spec_type=SPECTROGRAM_TYPE
@@ -211,7 +229,7 @@ def main():
         print(f"Error in loading normal dataset: {error}")
         return
 
-    print(f"Attempting to load abnormal data from: {os.path.join(FEATURES_DIR,'abnormal',SPECTROGRAM_TYPE)}")
+    print(f"Attempting to load abnormal data for: '{SPECTROGRAM_TYPE}' from: {FEATURES_DIR}")
     try:
         full_abnormal_dataset = SpectrogramDataset(
             data_dir=FEATURES_DIR, category='abnormal', transform=transform, spec_type=SPECTROGRAM_TYPE
@@ -223,16 +241,20 @@ def main():
 
     #=== Combine datasets and create the labels ===
     combined_dataset = ConcatDataset([full_normal_dataset, full_abnormal_dataset])
-    combined_labels = [0] * len(full_normal_dataset) + [1] * len(full_abnormal_dataset)
+    combined_labels = full_normal_dataset.labels + full_abnormal_dataset.labels
     indices = list(range(len(combined_dataset)))
 
     #=== Stratified Split of Train/Val/Test ===
+    if len(np.unique(combined_labels)) < 2:
+        print(f"Error: Dataset does not contain both normal and abnormal samples. Cannot perform the split")
+        return
+    
     train_idx, temp_idx, _,_temp_labels = train_test_split(
         indices, combined_labels, test_size=0.3, stratify= combined_labels, random_state=42
     )
 
-    val_idx, test_idx = train_test_split(
-        temp_idx, test_size=0.5, stratify=_temp_labels, random_state=42
+    val_idx, test_idx, _, _test_labels_for_stratify  = train_test_split(
+        temp_idx, _temp_labels,test_size=0.5, stratify=_temp_labels, random_state=42
     )
 
     #=== Creating Subsets ===
@@ -280,12 +302,17 @@ def main():
     
     if not os.path.exists(model_save_path):
         print(f"Error: Best model not saved at {model_save_path}. Cannot perform final evaluation.")
-        print("This usually happens if Val AUC never improved (e.g., always NaN or always below initial -1).")
-        print("Ensure your validation set is balanced (contains both normal and abnormal samples).")
+        best_loss_model_path = model_save_path.replace('.pth','_best_loss.pth')
+        if os.path.exists(best_loss_model_path):
+            print(f"Attempting to load best loss model from: {best_loss_model_path}")
+            model.load_state_dict(torch.load(best_loss_model_path))
+            print("Loaded best loss model for final evaluation")
+        else:
+            print("No best model (AUC or loss) found. Exiting final evaluation.")
         return 
-
-    model.load_state_dict(torch.load(model_save_path))
-    model.eval()
+    else:
+        model.load_state_dict(torch.load(model_save_path))
+        model.eval()
 
     _,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
 
