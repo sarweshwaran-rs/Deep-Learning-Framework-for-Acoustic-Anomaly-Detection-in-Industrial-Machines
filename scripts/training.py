@@ -24,10 +24,10 @@ os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
-NUM_EPOCH = 5
+NUM_EPOCH = 4
 
 SPECTROGRAM_TYPE = 'stft'
-ENCODER_NAME = 'resnet18'
+ENCODER_NAME = 'efficient_b0'
 PRETRAINED_ENCODER = True
 
 #----- Setting the device -----
