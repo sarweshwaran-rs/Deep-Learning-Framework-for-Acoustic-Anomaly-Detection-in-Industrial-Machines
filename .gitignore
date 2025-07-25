@@ -13,3 +13,5 @@ checkpoints
 capstone/Lib
 
 *.tmp
+
+*.pdf
