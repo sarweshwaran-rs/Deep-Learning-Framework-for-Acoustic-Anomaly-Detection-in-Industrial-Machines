@@ -77,7 +77,6 @@ def main():
                 np.save(os.path.join(output_cqt_dir, f"{base_name}.npy"),cqt_spec)
 
             print("\nPreprocessing Complete")
-            print(f"Spectrograms saved to: {FEATURES_DIR}/<id_xx>/<category>/<feature_type>")
-
+            
 if __name__ == "__main__":
     main()
