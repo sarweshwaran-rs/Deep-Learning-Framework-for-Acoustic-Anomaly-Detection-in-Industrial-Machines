@@ -81,7 +81,7 @@ def main():
             print(f"Processing {len(audio_files)} {category} files in {id_folder}...")
 
             for audio_file in tqdm(audio_files, desc=f"Converting {id_folder}/{category} audio"):
-                audio_path = os.path.join(category_path, audio_file)
+                audio_path = os.path.join(category_pat, audio_file)
                 base_name = os.path.splitext(audio_file)[0]
                 
                 unique_name = f"{id_folder}_{category}_{base_name}"
