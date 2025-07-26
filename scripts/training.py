@@ -26,13 +26,13 @@ LEARNING_RATE = 1e-4
 NUM_EPOCH = 4
 SAVE_PLOTS = True
 
-SPECTROGRAM_TYPE = 'stft'
-ENCODER_NAME = 'resnet18'
+SPECTROGRAM_TYPE = 'sqft'
+ENCODER_NAME = 'efficient_b0'
 PRETRAINED_ENCODER = True
 
 #----- Setting the device -----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using Device: {device}")
+print(f"Using Device: {device} : {torch.cuda.get_device_name()}")
 
 #----- Training Function -----
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, model_save_path):
@@ -111,7 +111,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
         plt.xlabel('Epoch')
         plt.ylabel('AUC')
-        plt.title('Train/Validation AUC ovr Epochs')
+        plt.title('Train/Validation AUC over Epochs')
         plt.legend()
         plt.grid(True)
 
@@ -280,7 +280,7 @@ def main():
 
     sample = train_dataset[0]['spectrogram'] # type: ignore
     in_channels = sample.shape[0]
-
+    print("in_Channels: ", in_channels)
     #=== Model Setup ===
     model = BasicSpectrogramClassifier(
         encoder_name=ENCODER_NAME, 
