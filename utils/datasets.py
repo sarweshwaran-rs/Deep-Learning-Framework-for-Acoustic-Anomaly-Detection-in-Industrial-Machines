@@ -14,9 +14,9 @@ class SpectrogramDataset(Dataset):
         """
 
         self.data_dir = data_dir
-        self.category = category 
+        self.category = category.lower() 
         self.transform = transform
-        self.spec_type = spec_type
+        self.spec_type = spec_type.lower()
         self.all_file_paths = []
         self.labels = [] # 0 for normal, 1 for abnormal
         
@@ -48,11 +48,10 @@ class SpectrogramDataset(Dataset):
             idx = idx.tolist()
         spec_path = self.all_file_paths[idx] # type: ignore
         spectrogram = np.load(spec_path).astype(np.float32)
+        spectrogram = torch.from_numpy(spectrogram)
 
         if spectrogram.ndim == 2:
-            spectrogram = np.expand_dims(spectrogram, axis=0)
-        
-        spectrogram = torch.from_numpy(spectrogram)
+            spectrogram = spectrogram.unsqueeze(0)
 
         if self.transform:
             spectrogram = self.transform(spectrogram)
@@ -63,8 +62,7 @@ class SpectrogramDataset(Dataset):
             'spectrogram': spectrogram, 
             'label': label, 
             'path': spec_path
-        }
-        
+        }    
         
 class NormalizeSpectrogram:
     """
