@@ -30,7 +30,11 @@ class BasicSpectrogramClassifier(nn.Module):
         else:
             raise ValueError(f"Encoder {encoder_name} not supported. Choose 'resnet18' or 'efficientnet_b0'")
         
-        self.classifier = nn.Linear(num_ftrs, num_classes) # type: ignore
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            nn.Linear(num_ftrs, num_classes) # type: ignore
+        )
 
     def forward(self, x):
         features = self.encoder(x)
