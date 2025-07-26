@@ -23,7 +23,7 @@ os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
-NUM_EPOCH = 5
+NUM_EPOCH = 4
 SAVE_PLOTS = True
 
 SPECTROGRAM_TYPE = 'stft'
@@ -288,9 +288,11 @@ def main():
         num_classes=2,
         in_channels=in_channels
     ).to(device)
-
+    
+    print(f"Model is using encoder: {ENCODER_NAME}, Pretrained: {PRETRAINED_ENCODER}")
+    
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE,weight_decay=1e-4)
 
     model_save_path = os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_{SPECTROGRAM_TYPE}_best_model.pth')
     
