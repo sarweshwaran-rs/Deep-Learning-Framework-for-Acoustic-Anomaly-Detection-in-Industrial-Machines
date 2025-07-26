@@ -1,6 +1,6 @@
 import os
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import numpy as np
 
 class SpectrogramDataset(Dataset):
@@ -35,7 +35,9 @@ class SpectrogramDataset(Dataset):
                 else:
                     print(f"Warning: Category path not found for {os.path.join(id_folder, self.category, self.spec_type)}")
         if not self.all_file_paths:
-            raise FileNotFoundError(f"No {self.spec_type} files found for category '{self.category}' under {self.data_dir}.  check your paths and a folder structure")
+            raise FileNotFoundError(f"[ERROR] No {self.spec_type} files found for category '{self.category}' under {self.data_dir}.\n" 
+                                    f"Expected path: <data_dir>/id_xx/{self.category}/{self.spec_type}/"
+            )
         
         
     def __len__(self):
@@ -50,17 +52,26 @@ class SpectrogramDataset(Dataset):
         if spectrogram.ndim == 2:
             spectrogram = np.expand_dims(spectrogram, axis=0)
         
+        spectrogram = torch.from_numpy(spectrogram)
+
         if self.transform:
-            spectrogram = self.transform(torch.from_numpy(spectrogram))
+            spectrogram = self.transform(spectrogram)
         
         label = self.labels[idx] # type: ignore
 
-        return {'spectrogram': spectrogram, 'label': label, 'path': spec_path}
+        return {
+            'spectrogram': spectrogram, 
+            'label': label, 
+            'path': spec_path
+        }
         
         
 class NormalizeSpectrogram:
+    """
+        Min-Max normalization to [0,1]
+    """
+
     def __call__(self, spectrogram):
-        #Min-Max normalization
         min_val = spectrogram.min()
         max_val = spectrogram.max()
 
@@ -72,6 +83,9 @@ class NormalizeSpectrogram:
     
 
 class ZScoreNormalizeSpectrogram:
+    """
+    Z-Score normalization: zero mean and unit variance
+    """
     def __call__(self, spectrogram):
         mean = spectrogram.mean()
         std = spectrogram.std()
@@ -82,4 +96,3 @@ class ZScoreNormalizeSpectrogram:
             spectrogram = torch.zeros_like(spectrogram)
         
         return spectrogram
-        
