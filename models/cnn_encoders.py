@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+from torchvision.models import ResNet18_Weights, EfficientNet_B0_Weights
 
 class BasicSpectrogramClassifier(nn.Module):
 
@@ -8,13 +9,20 @@ class BasicSpectrogramClassifier(nn.Module):
         super(BasicSpectrogramClassifier, self).__init__()
 
         if encoder_name == 'resnet18':
-            self.encoder = models.resnet18(pretrained = pretrained)
+            if pretrained:
+                self.encoder = models.resnet18(weights=ResNet18_Weights.DEFAULT)
+            else:
+                self.encoder = models.resnet18(weights=None)
+                
             self.encoder.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
             num_ftrs = self.encoder.fc.in_features
             self.encoder.fc = nn.Identity() # type: ignore
         
         elif encoder_name == 'efficient_b0':
-            self.encoder = models.efficientnet_b0(pretrained=pretrained)
+            if pretrained:
+                self.encoder = models.efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+            else:
+                self.encoder = models.efficientnet_b0(weights=None)
             self.encoder.features[0][0] = nn.Conv2d(1,32,kernel_size=3,stride=2, padding=1, bias=False)
             num_ftrs = self.encoder.classifier[1].in_features
             self.encoder.classifier = nn.Identity() # type: ignore
