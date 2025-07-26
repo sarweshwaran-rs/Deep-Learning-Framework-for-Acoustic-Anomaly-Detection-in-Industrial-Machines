@@ -24,12 +24,12 @@ os.makedirs(FEATURES_DIR,exist_ok=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using Device: {device}")
 
-def normalize(spec):
-    return (spec - np.mean(spec)) / (np.std(spec) + 1e-6)
-
-def process_audio_file(audio_path):
+def process_audio_file(audio_path, trim_silence=True):
 
     y, sr = librosa.load(audio_path, sr=SR)
+    if trim_silence:
+        y, _ = librosa.effects.trim(y, top_db=40)
+    
     #Pad or truncate audio to fixed length
     if len(y) < MAX_LENGTH:
         y = np.pad(y,(0,MAX_LENGTH - len(y)))
@@ -43,8 +43,7 @@ def process_audio_file(audio_path):
     S_mel = librosa.feature.melspectrogram(S=np.abs(S_stft), sr=sr, n_mels=N_MELS_STFT, hop_length=HOP_LENGTH_STFT)
     log_mel_spectrogram = librosa.power_to_db(S_mel, ref=np.max)
     log_mel_spectrogram = np.clip(log_mel_spectrogram, -40, 5)
-    log_mel_spectrogram = normalize(log_mel_spectrogram)
-
+    
     delta = librosa.feature.delta(log_mel_spectrogram)
     delta2 = librosa.feature.delta(log_mel_spectrogram, order=2)
     lms_stack = np.stack([log_mel_spectrogram, delta, delta2], axis=0)
