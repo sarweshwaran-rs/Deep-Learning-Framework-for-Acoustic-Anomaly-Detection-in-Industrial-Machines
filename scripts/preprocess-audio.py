@@ -3,7 +3,6 @@ import librosa
 import numpy as np
 import torch
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 BASE_DIR = r'data'
 DATA_RAW_DIR = os.path.join(BASE_DIR,'raw')
@@ -43,14 +42,26 @@ def process_audio_file(audio_path):
     S_stft = librosa.stft(y=y, n_fft=N_FFT_STFT,hop_length=HOP_LENGTH_STFT)
     S_mel = librosa.feature.melspectrogram(S=np.abs(S_stft), sr=sr, n_mels=N_MELS_STFT, hop_length=HOP_LENGTH_STFT)
     log_mel_spectrogram = librosa.power_to_db(S_mel, ref=np.max)
+    log_mel_spectrogram = np.clip(log_mel_spectrogram, -40, 5)
     log_mel_spectrogram = normalize(log_mel_spectrogram)
 
+    delta = librosa.feature.delta(log_mel_spectrogram)
+    delta2 = librosa.feature.delta(log_mel_spectrogram, order=2)
+    lms_stack = np.stack([log_mel_spectrogram, delta, delta2], axis=0)
+    
+    for i in range(3):
+        mean = np.mean(lms_stack[i])
+        std = np.std(lms_stack[i])
+        lms_stack[i] = (lms_stack[i] - mean) / (std + 1e-6)
+    
     #CQT -> dB
     CQT = librosa.cqt(y,sr=sr, hop_length=HOP_LENGTH_STFT, bins_per_octave=BINS_PER_OCTAVE_CQT, n_bins=N_BINS_CQT)
     cqt_spectrogram = librosa.amplitude_to_db(np.abs(CQT), ref=np.max)
-    cqt_spectrogram = normalize(cqt_spectrogram)
+    cqt_spectrogram = np.clip(cqt_spectrogram, -40, 5)
+    cqt_spectrogram = (cqt_spectrogram - np.mean(cqt_spectrogram)) / (np.std(cqt_spectrogram) + 1e-6)
+    cqt_spectrogram = np.expand_dims(cqt_spectrogram.astype(np.float32),axis=0)
 
-    return log_mel_spectrogram.astype(np.float32), cqt_spectrogram.astype(np.float32)
+    return lms_stack.astype(np.float32), cqt_spectrogram
 
 def main():
 
@@ -90,15 +101,6 @@ def main():
                 #save the features with the id_folder and category folder
                 np.save(os.path.join(output_stft_dir, f"{unique_name}.npy"), lms_spec)
                 np.save(os.path.join(output_cqt_dir, f"{unique_name}.npy"),cqt_spec)
-
-                # Visual sanity check
-                if np.random.rand() < 0.01:
-                    plt.figure(figsize=(10, 4))
-                    plt.imshow(lms_spec, aspect='auto', origin='lower')
-                    plt.title(f"Mel Spectrogram - {unique_name}")
-                    plt.colorbar()
-                    plt.tight_layout()
-                    plt.show()
 
             print(f"Preprocessing complete for {id_folder}/{category}")
 
