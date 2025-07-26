@@ -3,9 +3,8 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, ConcatDataset,Subset
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Subset
 from collections import Counter
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import numpy as np
@@ -25,9 +24,10 @@ os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 NUM_EPOCH = 5
+SAVE_PLOTS = True
 
 SPECTROGRAM_TYPE = 'stft'
-ENCODER_NAME = 'efficient_b0'
+ENCODER_NAME = 'resnet18'
 PRETRAINED_ENCODER = True
 
 #----- Setting the device -----
@@ -39,21 +39,18 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     best_val_auc = -1
     best_val_loss = float('inf')
 
-    train_losses = []
-    val_losses = []
-    train_aucs = []
-    val_aucs = []
+    train_losses, val_losses = [], []
+    train_aucs, val_aucs = [], []
 
     #----- Training Loop -----
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
-        all_labels = []
-        all_preds = []
+        all_labels, all_preds = [], []
 
         print(f"\nEpoch {epoch+1} / {num_epochs}")
 
-        for i, sample in tqdm(enumerate(train_loader), total=len(train_loader), desc="Training"):
+        for sample in tqdm(train_loader, desc="Training"):
             spectrograms = sample['spectrogram'].to(device)
             labels = sample['label'].to(device)
 
@@ -64,7 +61,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             optimizer.step()
 
             running_loss += loss.item() * spectrograms.size(0)
-
             #For AUC calculation
             probabilities = torch.softmax(outputs, dim=1)[:,1]
             all_labels.extend(labels.cpu().numpy())
@@ -75,6 +71,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         train_auc = roc_auc_score(all_labels, all_preds)
         train_losses.append(epoch_loss)
         train_aucs.append(train_auc)
+        
         print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}")
 
         #----- Validation Evaluation -----
@@ -97,39 +94,39 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
 
     #Plotting the train and validation Loss
-    plt.figure(figsize=(10,5))
-    plt.subplot(1,2,1)
-    plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
-    plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Train/Validation Loss over Epochs')
-    plt.legend()
-    plt.grid(True)
+    if SAVE_PLOTS:
+        plt.figure(figsize=(10,5))
+        plt.subplot(1,2,1)
+        plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
+        plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Train/Validation Loss over Epochs')
+        plt.legend()
+        plt.grid(True)
 
-    #Plotting AUC
-    plt.subplot(1,2,2)
-    plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
-    plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
-    plt.xlabel('Epoch')
-    plt.ylabel('AUC')
-    plt.title('Train/Validation AUC ovr Epochs')
-    plt.legend()
-    plt.grid(True)
+        #Plotting AUC
+        plt.subplot(1,2,2)
+        plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
+        plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
+        plt.xlabel('Epoch')
+        plt.ylabel('AUC')
+        plt.title('Train/Validation AUC ovr Epochs')
+        plt.legend()
+        plt.grid(True)
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_metrics_curve_{SPECTROGRAM_TYPE}.png'))
-    plt.show()
+        plt.tight_layout()
+        plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_metrics_curve_{SPECTROGRAM_TYPE}.png'))
+        plt.show()
 
 #----- Evaluation Function -----
 def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     model.eval()
     running_loss = 0.0
-    all_labels = []
-    all_preds = []
+    all_labels, all_preds = [], []
 
     with torch.no_grad():
-        for i, sample in tqdm(enumerate(data_loader), total=len(data_loader), desc=phase):
+        for sample in tqdm(data_loader, desc=phase):
             spectrograms = sample['spectrogram'].to(device)
             labels = sample['label'].to(device)
 
@@ -171,48 +168,46 @@ def calculate_pAUC(labels, preds, max_fpr = 0.1):
     mask = fpr <= max_fpr
     fpr_filtered, tpr_filtered = fpr[mask], tpr[mask] 
      
-    if fpr_filtered.max() < max_fpr:
-        if len(fpr) < 2:
-            return 0.0
-        
-        #Find the two closest points around max_fpr
-        idx_less_equal = np.where(fpr <= max_fpr)[0]
-        if( len(idx_less_equal) == 0):
-            return 0.0
-        
-        idx = idx_less_equal[-1]
+    if fpr_filtered.size == 0:
+        return 0.0
 
-        #Check if we are at the end of curve or need interpolation
+    if fpr_filtered.max() < max_fpr:
+        idx = np.where(fpr <= max_fpr)[0][-1]
         if idx + 1 < len(fpr):
             x1, y1 = fpr[idx], tpr[idx]
-            x2, y2 = fpr[idx+1], tpr[idx+1]
-            #Linear interpolation for TPR at max_fpr
-            if (x2 - x1) > 0:
-                tpr_at_max_fpr = y1 + (y2 - y1) * (max_fpr - x1) / (x2-x1)
-            else:
-                tpr_at_max_fpr = y1
-
+            x2, y2 = fpr[idx + 1], tpr[idx + 1]
+            tpr_interp = y1 + (y2 - y1) * (max_fpr - x1) / (x2 - x1) if (x2 - x1) > 0 else y1
             fpr_filtered = np.append(fpr_filtered, max_fpr)
-            tpr_filtered = np.append(tpr_filtered, tpr_at_max_fpr)
-        
-            #Sort to ensure correct order for AUC calculation
-            sort_indices = np.argsort(fpr_filtered)
-            fpr_filtered = fpr_filtered[sort_indices]
-            tpr_filtered = tpr_filtered[sort_indices]
-    elif fpr_filtered.size == 0 and max_fpr > 0:
-        return 0.0
-    elif fpr_filtered.size == 0 and max_fpr == 0:
-        return 0.0
+            tpr_filtered = np.append(tpr_filtered, tpr_interp)
+            sort_idx = np.argsort(fpr_filtered)
+            fpr_filtered = fpr_filtered[sort_idx]
+            tpr_filtered = tpr_filtered[sort_idx]
+
+    return auc(fpr_filtered, tpr_filtered) / max_fpr if len(fpr_filtered) >= 2 else 0.0
+
+
+#Added the Logic to Check the overlapping Dataset
+def check_overlap(dataset, train_idx, val_idx, test_idx):
+    train_files = set(dataset.datasets[0].all_file_paths[i] for i in train_idx if i< len(dataset.datasets[0])) | \
+                  set(dataset.datasets[1].all_file_paths[i - len(dataset.datasets[0])] for i in train_idx if i >= len(dataset.datasets[0])) 
     
+    val_files = set(dataset.datasets[0].all_file_paths[i] for i in val_idx if i < len(dataset.datasets[0])) | \
+                set(dataset.datasets[1].all_file_paths[i - len(dataset.datasets[0])] for i in val_idx if i>= len(dataset.datasets[0]))
     
-    #calculate AUC from the filtered points
-    if len(fpr_filtered) < 2:
-        return 0.0
-    if max_fpr == 0:
-        return 0.0 if np.all(fpr_filtered == 0) else float('nan')
+    test_files = set(dataset.datasets[0].all_file_paths[i] for i in test_idx if i < len(dataset.datasets[0])) | \
+                 set(dataset.datasets[1].all_file_paths[i - len(dataset.datasets[0])] for i in test_idx if i >= len(dataset.datasets[0]))
     
-    pauc_score = auc(fpr_filtered, tpr_filtered) / max_fpr
-    return pauc_score
+    print("\n--- Checking Overlap Between Splits ---")
+    print("Train ∩ val:", len(train_files & val_files))
+    print("Train ∩ Test:", len(train_files & test_files))
+    print("Val ∩ Test:", len(val_files & test_files))
+
+    if train_files & val_files or train_files & test_files or val_files & test_files:
+        print("Warning: Overlapping files detected between splits!")
+    else:
+        print("No overlap between Train, Validation, and Test splits.")
+
+
 
 #----- Main Training Pipeline -----
 def main():
@@ -253,7 +248,7 @@ def main():
         indices, combined_labels, test_size=0.3, stratify= combined_labels, random_state=42
     )
 
-    val_idx, test_idx, _, _test_labels_for_stratify  = train_test_split(
+    val_idx, test_idx, _, _  = train_test_split(
         temp_idx, _temp_labels,test_size=0.5, stratify=_temp_labels, random_state=42
     )
 
@@ -277,16 +272,21 @@ def main():
     print(f"Validation Set: Normal = {val_count[0]}, Abnormal = {val_count[1]}, Total = {len(val_labels)}")
     print(f"Test Set:      Normal = {test_count[0]}, Abnormal = {test_count[1]}, Total = {len(test_labels)}")
 
+    check_overlap(combined_dataset, train_idx, val_idx, test_idx)
     #=== DataLoaders ===
     train_loader = DataLoader(train_dataset, batch_size= BATCH_SIZE, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,shuffle=False, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
+    sample = train_dataset[0]['spectrogram'] # type: ignore
+    in_channels = sample.shape[0]
+
     #=== Model Setup ===
     model = BasicSpectrogramClassifier(
         encoder_name=ENCODER_NAME, 
         pretrained=PRETRAINED_ENCODER, 
-        num_classes=2
+        num_classes=2,
+        in_channels=in_channels
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -305,13 +305,13 @@ def main():
         best_loss_model_path = model_save_path.replace('.pth','_best_loss.pth')
         if os.path.exists(best_loss_model_path):
             print(f"Attempting to load best loss model from: {best_loss_model_path}")
-            model.load_state_dict(torch.load(best_loss_model_path))
+            model.load_state_dict(torch.load(best_loss_model_path,weights_only=True))
             print("Loaded best loss model for final evaluation")
         else:
             print("No best model (AUC or loss) found. Exiting final evaluation.")
         return 
     else:
-        model.load_state_dict(torch.load(model_save_path))
+        model.load_state_dict(torch.load(model_save_path,weights_only=True))
         model.eval()
 
     _,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
@@ -335,7 +335,8 @@ def main():
         plt.title(f'Receiver Operating Characteristic ({SPECTROGRAM_TYPE.upper()} Branch)')
         plt.legend(loc="lower right")
         plt.grid(True)
-        plt.savefig(os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_roc_curve_{SPECTROGRAM_TYPE}.png'))
+        if SAVE_PLOTS:
+            plt.savefig(os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_roc_curve_{SPECTROGRAM_TYPE}.png'))
         plt.show()
     else:
         print("\nFinal Test AUC/pAUC not calculated: Only one class present in the combined test set.")
