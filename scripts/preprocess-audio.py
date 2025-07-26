@@ -64,11 +64,11 @@ def main():
         print(f"\nProcessing data for {id_folder}...")
 
         for category in ['normal','abnormal']:
-            catetory_path = os.path.join(id_folder_path, category)
+            category_path = os.path.join(id_folder_path, category)
 
             #Ensure the catefory directory exists within the id_folder
-            if not os.path.isdir(catetory_path):
-                print(f"Skipping {catetory_path} as it does not exist.")
+            if not os.path.isdir(category_path):
+                print(f"Skipping {category_path} as it does not exist.")
                 continue
 
             #Create output directories for the current id_folder and category
@@ -77,11 +77,11 @@ def main():
             os.makedirs(output_stft_dir, exist_ok=True)
             os.makedirs(output_cqt_dir, exist_ok=True)
 
-            audio_files = [f for f in os.listdir(catetory_path) if f.endswith('.wav')]
+            audio_files = [f for f in os.listdir(category_path) if f.endswith('.wav')]
             print(f"Processing {len(audio_files)} {category} files in {id_folder}...")
 
             for audio_file in tqdm(audio_files, desc=f"Converting {id_folder}/{category} audio"):
-                audio_path = os.path.join(catetory_path, audio_file)
+                audio_path = os.path.join(category_path, audio_file)
                 base_name = os.path.splitext(audio_file)[0]
                 
                 unique_name = f"{id_folder}_{category}_{base_name}"
