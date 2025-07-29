@@ -6,19 +6,21 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset,Subset
 from sklearn.model_selection import train_test_split
 from collections import Counter
-from sklearn.metrics import roc_auc_score, roc_curve, auc
+from sklearn.metrics import roc_auc_score, roc_curve, auc, accuracy_score
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from torchvision import transforms
+from sklearn.utils import shuffle
 
 #----- Custom Imports -----
-from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram
+from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram, AugmentSpectrogram
 from models.cnn_encoders import BasicSpectrogramClassifier
 
 #----- Paths and the Configuration -----
-BASE_DIR = r'F:\Capstone\DFCA'
-FEATURES_DIR = os.path.join(BASE_DIR,'data','features')
-CHECKPOINTS_DIR = os.path.join(r'F:\CapStone\DFCA','checkpoints')
+BASE_DIR = r'C:\Users\sarwe\raw'
+FEATURES_DIR = os.path.join(BASE_DIR,'-6_dB_features')
+CHECKPOINTS_DIR = os.path.join(BASE_DIR,'-6_dB_pump_resnet18_stqt_checkpoints')
 os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 
 BATCH_SIZE = 32
@@ -26,8 +28,8 @@ LEARNING_RATE = 1e-4
 NUM_EPOCH = 4
 SAVE_PLOTS = True
 
-SPECTROGRAM_TYPE = 'sqft'
-ENCODER_NAME = 'efficient_b0'
+SPECTROGRAM_TYPE = 'stft'
+ENCODER_NAME = 'resnet18'
 PRETRAINED_ENCODER = True
 
 #----- Setting the device -----
@@ -41,19 +43,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
     train_losses, val_losses = [], []
     train_aucs, val_aucs = [], []
+    train_accs, val_accs = [], []
 
     #----- Training Loop -----
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
-        all_labels, all_preds = [], []
+        all_labels, all_preds, all_classes = [], [], []
 
         print(f"\nEpoch {epoch+1} / {num_epochs}")
 
         for sample in tqdm(train_loader, desc="Training"):
             spectrograms = sample['spectrogram'].to(device)
             labels = sample['label'].to(device)
-
+            # print(f"\nSectrogram batch shape: {spectrograms.shape}")
             optimizer.zero_grad()
             outputs = model(spectrograms)
             loss = criterion(outputs, labels)
@@ -61,31 +64,31 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             optimizer.step()
 
             running_loss += loss.item() * spectrograms.size(0)
-            #For AUC calculation
             probabilities = torch.softmax(outputs, dim=1)[:,1]
+            preds_class = torch.argmax(outputs, dim=1)
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(probabilities.cpu().detach().numpy())
+            all_classes.extend(preds_class.cpu().numpy())
 
-        #----- Epoch Metrics -----
         epoch_loss = running_loss / len(train_loader.dataset)
         train_auc = roc_auc_score(all_labels, all_preds)
+        train_acc = accuracy_score(all_labels, all_classes)
         train_losses.append(epoch_loss)
         train_aucs.append(train_auc)
-        
-        print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}")
+        train_accs.append(train_acc)
 
-        #----- Validation Evaluation -----
-        val_loss, val_auc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
+        print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}, Train Accuracy: {train_acc:.4f}")
+
+        val_loss, val_auc, val_acc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
         val_losses.append(val_loss)
         val_aucs.append(val_auc)
+        val_accs.append(val_acc)
 
-        #----- Save Best Model (Loss-Based) -----
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_save_path.replace('.pth', '_best_loss.pth'))
             print(f"Model saved (best val loss: {best_val_loss:.4f})")
-        
-        #----- Svae Best Model (AUC Based) -----
+
         if not np.isnan(val_auc) and val_auc > best_val_auc:
             best_val_auc = val_auc
             torch.save(model.state_dict(), model_save_path)
@@ -93,25 +96,33 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         else:
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
 
-    #Plotting the train and validation Loss
     if SAVE_PLOTS:
-        plt.figure(figsize=(10,5))
-        plt.subplot(1,2,1)
+        plt.figure(figsize=(15,5))
+
+        plt.subplot(1,3,1)
         plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
         plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
-        plt.title('Train/Validation Loss over Epochs')
+        plt.title('Train/Validation Loss')
         plt.legend()
         plt.grid(True)
 
-        #Plotting AUC
-        plt.subplot(1,2,2)
+        plt.subplot(1,3,2)
         plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
         plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
         plt.xlabel('Epoch')
         plt.ylabel('AUC')
-        plt.title('Train/Validation AUC over Epochs')
+        plt.title('Train/Validation AUC')
+        plt.legend()
+        plt.grid(True)
+
+        plt.subplot(1,3,3)
+        plt.plot(range(1,num_epochs+1), train_accs, label = 'Train Acc')
+        plt.plot(range(1,num_epochs+1), val_accs, label='Validation Acc')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.title('Train/Validation Accuracy')
         plt.legend()
         plt.grid(True)
 
@@ -123,7 +134,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     model.eval()
     running_loss = 0.0
-    all_labels, all_preds = [], []
+    all_labels, all_preds, all_classes = [], [], []
 
     with torch.no_grad():
         for sample in tqdm(data_loader, desc=phase):
@@ -135,18 +146,19 @@ def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
             running_loss += loss.item() * spectrograms.size(0)
 
             probabilities = torch.softmax(outputs, dim=1)[:,1]
+            preds_class = torch.argmax(outputs, dim=1)
+
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(probabilities.cpu().numpy())
+            all_classes.extend(preds_class.cpu().numpy())
 
-        avg_loss = running_loss / len(data_loader.dataset)
+    avg_loss = running_loss / len(data_loader.dataset)
+    auc_score = roc_auc_score(all_labels, all_preds) if len(np.unique(all_labels)) > 1 else float('nan')
+    acc_score = accuracy_score(all_labels, all_classes)
 
-        if len(np.unique(all_labels)) > 1:
-            auc_score = roc_auc_score(all_labels, all_preds)
-        else:
-            auc_score = float('nan')
-        
-        print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}")
-        return avg_loss, auc_score, all_labels, all_preds
+    print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}, {phase} Accuracy: {acc_score:.4f}")
+    return avg_loss, auc_score, acc_score, all_labels, all_preds
+
 
 #----- Partial AUC Calculation -----    
 def calculate_pAUC(labels, preds, max_fpr = 0.1):
@@ -211,34 +223,57 @@ def check_overlap(dataset, train_idx, val_idx, test_idx):
 
 #----- Main Training Pipeline -----
 def main():
-    transform = ZScoreNormalizeSpectrogram()
+    train_transform = transforms.Compose([
+        ZScoreNormalizeSpectrogram(),
+        AugmentSpectrogram() 
+    ])
+
+    test_transform = transforms.Compose([
+                        ZScoreNormalizeSpectrogram()
+                    ])
 
     # === Load all normal and abnormal data first ===
     print(f"Attempting to load normal data for : '{SPECTROGRAM_TYPE}' from: {FEATURES_DIR}")
     try:
-        full_normal_dataset = SpectrogramDataset(
-            data_dir=FEATURES_DIR, category='normal' , transform=transform, spec_type=SPECTROGRAM_TYPE
+        full_normal_dataset_train = SpectrogramDataset(
+            data_dir=FEATURES_DIR, category='normal' , transform=train_transform, spec_type=SPECTROGRAM_TYPE
         )
-        print(f"Successfully loaded {len(full_normal_dataset)} normal samples.")
+        full_normal_dataset_test = SpectrogramDataset(
+            data_dir=FEATURES_DIR,category='normal',transform=test_transform,spec_type=SPECTROGRAM_TYPE
+        )
+        print(f"Successfully loaded {len(full_normal_dataset_train)} normal samples.")
     except (FileNotFoundError, ValueError) as error:
         print(f"Error in loading normal dataset: {error}")
         return
 
     print(f"Attempting to load abnormal data for: '{SPECTROGRAM_TYPE}' from: {FEATURES_DIR}")
     try:
-        full_abnormal_dataset = SpectrogramDataset(
-            data_dir=FEATURES_DIR, category='abnormal', transform=transform, spec_type=SPECTROGRAM_TYPE
+        full_abnormal_dataset_train = SpectrogramDataset(
+            data_dir=FEATURES_DIR, category='abnormal', transform=train_transform, spec_type=SPECTROGRAM_TYPE
         )
-        print(f"Successfully loaded {len(full_abnormal_dataset)} abnormal samples.")
+
+        full_abnormal_dataset_test = SpectrogramDataset(
+            data_dir=FEATURES_DIR, category='abnormal',transform=test_transform,spec_type=SPECTROGRAM_TYPE
+        )
+        print(f"Successfully loaded {len(full_abnormal_dataset_train)} abnormal samples.")
     except (FileNotFoundError, ValueError) as error:
         print(f"Error loading abnormal dataset: {error}")
         return
 
     #=== Combine datasets and create the labels ===
-    combined_dataset = ConcatDataset([full_normal_dataset, full_abnormal_dataset])
-    combined_labels = full_normal_dataset.labels + full_abnormal_dataset.labels
-    indices = list(range(len(combined_dataset)))
+    combined_dataset_train = ConcatDataset([full_normal_dataset_train, full_abnormal_dataset_train])
+    combined_dataset_test = ConcatDataset([full_normal_dataset_test, full_abnormal_dataset_test])
+    combined_labels = full_normal_dataset_train.labels + full_abnormal_dataset_train.labels
+    indices = list(range(len(combined_dataset_train)))
+    
+    sample_label_pairs = list(zip(range(len(full_normal_dataset_train.labels + full_abnormal_dataset_train.labels)), 
+                              full_normal_dataset_train.labels + full_abnormal_dataset_train.labels))
+    shuffled_pairs = shuffle(sample_label_pairs, random_state=42)
 
+    # Unzip after shuffle
+    indices, combined_labels = zip(*shuffled_pairs)
+    indices = list(indices)
+    combined_labels = list(combined_labels)
     #=== Stratified Split of Train/Val/Test ===
     if len(np.unique(combined_labels)) < 2:
         print(f"Error: Dataset does not contain both normal and abnormal samples. Cannot perform the split")
@@ -253,9 +288,9 @@ def main():
     )
 
     #=== Creating Subsets ===
-    train_dataset = Subset(combined_dataset, train_idx)
-    val_dataset = Subset(combined_dataset, val_idx)
-    test_dataset = Subset(combined_dataset, test_idx)
+    train_dataset = Subset(combined_dataset_train, train_idx)
+    val_dataset = Subset(combined_dataset_test, val_idx)
+    test_dataset = Subset(combined_dataset_test, test_idx)
 
     print(f"Stratified Split Sizes: Train = {len(train_dataset)}, Val = {len(val_dataset)}, Test = {len(test_dataset)}")
 
@@ -272,27 +307,24 @@ def main():
     print(f"Validation Set: Normal = {val_count[0]}, Abnormal = {val_count[1]}, Total = {len(val_labels)}")
     print(f"Test Set:      Normal = {test_count[0]}, Abnormal = {test_count[1]}, Total = {len(test_labels)}")
 
-    check_overlap(combined_dataset, train_idx, val_idx, test_idx)
+    check_overlap(combined_dataset_train, train_idx, val_idx, test_idx)
     #=== DataLoaders ===
-    train_loader = DataLoader(train_dataset, batch_size= BATCH_SIZE, shuffle=True, num_workers=0)
+    train_loader = DataLoader(train_dataset, batch_size= BATCH_SIZE, shuffle=True, num_workers=0, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE,shuffle=False, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
-    sample = train_dataset[0]['spectrogram'] # type: ignore
-    in_channels = sample.shape[0]
-    print("in_Channels: ", in_channels)
     #=== Model Setup ===
     model = BasicSpectrogramClassifier(
         encoder_name=ENCODER_NAME, 
         pretrained=PRETRAINED_ENCODER, 
         num_classes=2,
-        in_channels=in_channels
+
     ).to(device)
     
     print(f"Model is using encoder: {ENCODER_NAME}, Pretrained: {PRETRAINED_ENCODER}")
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE,weight_decay=1e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE,weight_decay=1e-2)
 
     model_save_path = os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_{SPECTROGRAM_TYPE}_best_model.pth')
     
@@ -316,7 +348,7 @@ def main():
         model.load_state_dict(torch.load(model_save_path,weights_only=True))
         model.eval()
 
-    _,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
+    _,_,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
 
     if len(np.unique(all_labels_test)) > 1: 
         final_auc = roc_auc_score(all_labels_test, all_preds_test)
