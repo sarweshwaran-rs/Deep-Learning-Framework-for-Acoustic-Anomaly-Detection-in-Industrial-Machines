@@ -2,6 +2,8 @@ import os
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+#Added the torchAudio transforms
+import torchaudio.transforms as T
 
 class SpectrogramDataset(Dataset):
     def __init__(self, data_dir, category='normal', transform = None, spec_type='stft'):
@@ -93,4 +95,19 @@ class ZScoreNormalizeSpectrogram:
         else:
             spectrogram = torch.zeros_like(spectrogram)
         
+        return spectrogram
+
+
+class AugmentSpectrogram:
+    def __init__(self, time_mask=True, freq_mask=True, time_mask_param=18,freq_mask_param=12):
+        self.time_mask = time_mask
+        self.freq_mask = freq_mask
+        self.time_masker = T.TimeMasking(time_mask_param=time_mask_param)
+        self.freq_masker = T.FrequencyMasking(freq_mask_param=freq_mask_param)
+
+    def __call__(self, spectrogram):
+        if self.freq_mask:
+            spectrogram = self.freq_masker(spectrogram)
+        if self.time_mask:
+            spectrogram = self.time_masker(spectrogram)
         return spectrogram
