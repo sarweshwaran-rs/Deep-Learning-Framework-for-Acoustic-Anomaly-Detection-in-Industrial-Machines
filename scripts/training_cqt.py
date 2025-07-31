@@ -92,7 +92,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         
         if scheduler:
             scheduler.step(val_auc)
-    
+            for i, param_group in enumerate(optimizer.param_groups):
+                print(f"Epoch {epoch+1} | Learning Rate for param group {i}: {param_group['lr']}")
+        
     if SAVE_PLOTS:
         plt.figure(figsize=(15,5))
         plt.subplot(1,3,1)
@@ -286,7 +288,7 @@ def main():
 
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2, verbose=True) # type: ignore
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2) 
 
     model_path = os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_{SPECTROGRAM_TYPE}_best_model.pth')
     
