@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 import numpy as np
 #Added the torchAudio transforms
 import torchaudio.transforms as T
+from torchvision.transforms import functional as TF
+from PIL import Image
 
 class SpectrogramDataset(Dataset):
     def __init__(self, data_dir, category='normal', transform = None, spec_type='stft'):
@@ -111,3 +113,21 @@ class AugmentSpectrogram:
         if self.time_mask:
             spectrogram = self.time_masker(spectrogram)
         return spectrogram
+    
+
+class ResizeSpectroram:
+    def __init__(self, size=(224, 224)):
+        self.size = size
+
+    def __call__(self, spec_tensor):
+        if isinstance(spec_tensor, torch.Tensor):
+            if spec_tensor.dim() == 2:
+                spec_tensor = spec_tensor.unsqueeze(0)
+            return TF.resize(spec_tensor, self.size)
+        elif isinstance(spec_tensor, np.ndarray):
+            img = Image.fromarray((spec_tensor * 255).astype(np.uint8))
+            img = img.resize(self.size, Image.BILINEAR) # type: ignore
+            img = np.asarray(img).astype(np.float32) / 255.0
+            return torch.from_numpy(img).unsqueeze(0)
+        else:
+            raise TypeError("Unsupported type for ResizeSpectrogram")
