@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset,Subset
 from sklearn.model_selection import train_test_split
 from collections import Counter
-from sklearn.metrics import roc_auc_score, roc_curve, auc, accuracy_score
+from sklearn.metrics import roc_auc_score, roc_curve, auc, accuracy_score, balanced_accuracy_score
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -44,6 +44,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     train_losses, val_losses = [], []
     train_aucs, val_aucs = [], []
     train_accs, val_accs = [], []
+    train_bccs, val_bccs = [], []
 
     #----- Training Loop -----
     for epoch in range(num_epochs):
@@ -73,17 +74,18 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         epoch_loss = running_loss / len(train_loader.dataset)
         train_auc = roc_auc_score(all_labels, all_preds)
         train_acc = accuracy_score(all_labels, all_classes)
+        bal_acc = balanced_accuracy_score(all_labels, all_classes)
         train_losses.append(epoch_loss)
         train_aucs.append(train_auc)
         train_accs.append(train_acc)
+        train_bccs.append(bal_acc)
+        print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}, Train Accuracy: {train_acc:.4f}, Balanced Accuracy:{bal_acc:.4f}")
 
-        print(f"Train Loss: {epoch_loss:.4f}, Train AUC: {train_auc:.4f}, Train Accuracy: {train_acc:.4f}")
-
-        val_loss, val_auc, val_acc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
+        val_loss, val_auc, val_acc, val_bcc, _, _ = evaluate_model(model, val_loader, criterion, "Validation")
         val_losses.append(val_loss)
         val_aucs.append(val_auc)
         val_accs.append(val_acc)
-
+        val_bccs.append(val_bcc)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_save_path.replace('.pth', '_best_loss.pth'))
@@ -97,9 +99,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
 
     if SAVE_PLOTS:
-        plt.figure(figsize=(15,5))
+        plt.figure(figsize=(20,5))
 
-        plt.subplot(1,3,1)
+        plt.subplot(1,4,1)
         plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
         plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
         plt.xlabel('Epoch')
@@ -108,7 +110,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         plt.legend()
         plt.grid(True)
 
-        plt.subplot(1,3,2)
+        plt.subplot(1,4,2)
         plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
         plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
         plt.xlabel('Epoch')
@@ -117,7 +119,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         plt.legend()
         plt.grid(True)
 
-        plt.subplot(1,3,3)
+        plt.subplot(1,4,3)
         plt.plot(range(1,num_epochs+1), train_accs, label = 'Train Acc')
         plt.plot(range(1,num_epochs+1), val_accs, label='Validation Acc')
         plt.xlabel('Epoch')
@@ -126,6 +128,14 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         plt.legend()
         plt.grid(True)
 
+        plt.subplot(1,4,4)
+        plt.plot(range(1, num_epochs+1), train_bccs, label="Train Balanced Acc")
+        plt.plot(range(1,num_epochs+1), val_bccs, label="Val Balanced ACC")
+        plt.xlabel('Epoch')
+        plt.ylabel('Train/Validation Balanced Accuracy')
+        plt.legend()
+        plt.grid(True)
+        
         plt.tight_layout()
         plt.savefig(os.path.join(CHECKPOINTS_DIR,f'{ENCODER_NAME}_metrics_curve_{SPECTROGRAM_TYPE}.png'))
         plt.show()
@@ -155,8 +165,8 @@ def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     avg_loss = running_loss / len(data_loader.dataset)
     auc_score = roc_auc_score(all_labels, all_preds) if len(np.unique(all_labels)) > 1 else float('nan')
     acc_score = accuracy_score(all_labels, all_classes)
-
-    print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}, {phase} Accuracy: {acc_score:.4f}")
+    val_bcc = balanced_accuracy_score(all_labels, all_classes)
+    print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}, {phase} Accuracy: {acc_score:.4f}, Balanced Validation Accuracy Score:{val_bcc:.4f}")
     
     print(f"\n[DEBUG] {phase} Prediction Distribution:")
     pred_counter = Counter(all_classes)
@@ -168,7 +178,7 @@ def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     for i in range(min(10, len(all_labels))):
         print(f"Sample {i+1}: Pred = {all_classes[i]}, Prob = {all_preds[i]:.4f}, True = {all_labels[i]}")
     
-    return avg_loss, auc_score, acc_score, all_labels, all_preds
+    return avg_loss, auc_score, acc_score, val_bcc, all_labels, all_preds
 
 
 #----- Partial AUC Calculation -----    
@@ -359,7 +369,7 @@ def main():
         model.load_state_dict(torch.load(model_save_path,weights_only=True))
         model.eval()
 
-    _,_,_,all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
+    _, _, _, _, all_labels_test, all_preds_test = evaluate_model(model,test_loader,criterion, "Test")
 
     if len(np.unique(all_labels_test)) > 1: 
         final_auc = roc_auc_score(all_labels_test, all_preds_test)
