@@ -1,4 +1,5 @@
 import os
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,22 +16,70 @@ from torchvision import transforms
 from torchaudio.transforms import FrequencyMasking, TimeMasking
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram
+from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram, FocalLoss, BinaryFocalLoss
 from models.transformers_encoders import TransformerSpectrogramClassifier
 
 BASE_DIR = r'C:\Users\sarwe\raw'
 FEATURES_DIR = os.path.join(BASE_DIR,'-6_dB_features')
-CHECKPOINTS_DIR = os.path.join(r'F:\CapStone\DFCA\checkpoints','-6_dB_swintiny_(EUpdated-10)_checkpoint')
+CHECKPOINTS_DIR = os.path.join(r'F:\CapStone\DFCA\checkpoints','-6_dB_mobilevit_s_(EUpdated-10)_checkpoint')
 os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 
 SPECTROGRAM_TYPE = 'cqt'
-ENCODER_NAME = 'swin_tiny'
+ENCODER_NAME = 'mobilevit_s'
 PRETRAINED_ENCODER = True
 
 NUM_EPOCH = 10
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 SAVE_PLOTS = True
+EARLY_STOPPING_PATIENCE = 5
+
+#Applying the Custom class to apply the Time and Frequency Mask
+class ApplyMultipleMasks(nn.Module):
+    def __init__(self, num_time_masks=2, num_freq_masks=2, num_masks = 2, freq_param=20, prob=0.3):
+        super(ApplyMultipleMasks, self).__init__()
+        self.num_freq_masks = num_freq_masks
+        self.num_time_masks = num_time_masks
+        self.num_masks = num_masks
+        self.prob = prob
+
+
+    def forward(self, spec):
+        if random.random() > self.prob:
+            return spec
+        
+        for _ in range(self.num_masks):
+            spec = FrequencyMasking(freq_mask_param=self.num_freq_masks) (spec)
+            spec = TimeMasking(time_mask_param=self.num_time_masks)(spec)
+        
+        return spec
+
+#Adding the Guassian Noise to Simulate audio variation
+class AddGaussianNoise(nn.Module):
+    def __init__(self, mean=0., std=0.05):
+        super().__init__()
+        self.mean = mean
+        self.std = std
+
+    def forward(self, x):
+        return x + torch.randn_like(x) * self.std
+
+#Mixup for avoding the overfitting and underfitting
+def mixup_data(x, y, alpha=0.2):
+    '''Returns mixed inputs, pairs of targets, and lambda'''
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size).to(x.device)
+
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using Device: {device} : {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
@@ -41,6 +90,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     train_losses, val_losses = [], []
     train_aucs, val_aucs = [], []
     train_accs, val_accs = [], []
+    early_stop_counter = 0
 
     for epoch in range(num_epochs):
         model.train()
@@ -50,10 +100,17 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         for sample in tqdm(train_loader, desc="Training"):
             spectrograms = sample['spectrogram'].to(device)
-            labels = sample['label'].to(device)
+            labels = sample['label'].to(device) #labels = sample['label'].float().unsqueeze(1).to(device)
 
+            #Adding the Mixup(New)
+            #mixed_input, targets_a, targets_b, lam = mixup_data(spectrograms, labels, alpha=0.1)
+            
             optimizer.zero_grad()
             outputs = model(spectrograms)
+            #outputs= model(mixed_input)
+
+            #loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
+
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -61,9 +118,17 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             running_loss += loss.item() * spectrograms.size(0)
             probs = torch.softmax(outputs, dim=1)[:, 1]
             preds = torch.argmax(outputs, dim=1)
+            #For Binary FocalLoss
+            #probs = torch.sigmoid(outputs).squeeze()
+            #preds = (probs > 0.2).long()
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(probs.detach().cpu().numpy())
             all_classes.extend(preds.cpu().numpy())
+            
+            # For Binary Focal Loss
+            # all_labels.extend(labels.cpu().numpy().flatten().tolist())
+            # all_preds.extend(probs.detach().cpu().numpy().flatten().tolist())
+            # all_classes.extend(preds.cpu().numpy().flatten().tolist())
 
         epoch_loss = running_loss / len(train_loader.dataset)
         train_auc = roc_auc_score(all_labels, all_preds)
@@ -78,6 +143,10 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         val_aucs.append(val_auc)
         val_accs.append(val_acc)
 
+        if scheduler:
+            scheduler.step(val_loss)
+        print(f"[Epoch {epoch+1}] Learning rate: {optimizer.param_groups[0]['lr']:.6f}")
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_save_path.replace('.pth', '_best_loss.pth'))
@@ -87,19 +156,22 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             best_val_auc = val_auc
             torch.save(model.state_dict(), model_save_path)
             print(f"Model saved in {CHECKPOINTS_DIR} with improved AUC: {best_val_auc:.4f}")
+            early_stop_counter = 0
         else:
             print(f"Val AUC ({val_auc:.4f}) did not improve from best ({best_val_auc:.4f})")
-        
-        if scheduler:
-            scheduler.step(val_auc)
-            for i, param_group in enumerate(optimizer.param_groups):
-                print(f"Epoch {epoch+1} | Learning Rate for param group {i}: {param_group['lr']}")
-        
+            early_stop_counter += 1
+            print(f"Early stopping counter: {early_stop_counter}/{EARLY_STOPPING_PATIENCE}")
+
+        if early_stop_counter >= EARLY_STOPPING_PATIENCE:
+            print("Early Stopping Triggered!")
+            break
+
     if SAVE_PLOTS:
+        epochs_ran = len(train_losses)
         plt.figure(figsize=(15,5))
         plt.subplot(1,3,1)
-        plt.plot(range(1,num_epochs+1), train_losses, label='Train Loss')
-        plt.plot(range(1,num_epochs+1), val_losses,label="Validation Loss")
+        plt.plot(range(1,epochs_ran+1), train_losses, label='Train Loss')
+        plt.plot(range(1,epochs_ran+1), val_losses,label="Validation Loss")
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.title('Train/Validation Loss')
@@ -107,8 +179,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         plt.grid(True)
 
         plt.subplot(1,3,2)
-        plt.plot(range(1,num_epochs+1), train_aucs, label = 'Train AUC')
-        plt.plot(range(1,num_epochs+1), val_aucs, label='Validation AUC')
+        plt.plot(range(1,epochs_ran+1), train_aucs, label = 'Train AUC')
+        plt.plot(range(1,epochs_ran+1), val_aucs, label='Validation AUC')
         plt.xlabel('Epoch')
         plt.ylabel('AUC')
         plt.title('Train/Validation AUC')
@@ -136,23 +208,40 @@ def evaluate_model(model, loader, criterion, phase):
     with torch.no_grad():
         for sample in tqdm(loader, desc=phase):
             spectrograms = sample['spectrogram'].to(device)
-            labels = sample['label'].to(device)
+            labels = sample['label'].to(device) #labels = sample['label'].float().unsqueeze(1).to(device)
             outputs = model(spectrograms)
             loss = criterion(outputs, labels)
             running_loss += loss.item() * spectrograms.size(0)
             
             probs = torch.softmax(outputs, dim=1)[:, 1]
             preds = torch.argmax(outputs, dim=1)
+            #For BinaryFocalLoss
+            # probs = torch.sigmoid(outputs).squeeze()
+            # preds = (probs > 0.2).long()
             
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(probs.cpu().numpy())
             all_classes.extend(preds.cpu().numpy())
+            # For BinaryFocalLoss
+            # all_labels.extend(labels.cpu().numpy().flatten().tolist())
+            # all_preds.extend(probs.cpu().numpy().flatten().tolist())
+            # all_classes.extend(preds.cpu().numpy().flatten().tolist())
 
     avg_loss = running_loss / len(loader.dataset)
     auc_score = roc_auc_score(all_labels, all_preds) if len(np.unique(all_labels)) > 1 else float('nan')
     acc_score = accuracy_score(all_labels, all_classes)
     
     print(f"{phase} Loss: {avg_loss:.4f}, AUC: {auc_score:.4f}, Accuracy: {acc_score:.4f}") 
+    print(f"\n[DEBUG] {phase} Prediction Distribution:")
+    pred_counter = Counter(all_classes)
+    label_counter = Counter(all_labels)
+    print(f"Predicted Classes: {dict(pred_counter)}")
+    print(f"True Labels:       {dict(label_counter)}")
+
+    print(f"\nSample Predictions vs Labels:")
+    for i in range(min(10, len(all_labels))):
+        print(f"Sample {i+1}: Pred = {all_classes[i]}, Prob = {all_preds[i]:.4f}, True = {all_labels[i]}")
+    
     return avg_loss, auc_score, acc_score, all_labels, all_preds
 
 def calculate_pAUC(labels, preds, max_fpr=0.1):
@@ -214,8 +303,8 @@ def main():
     transform = transforms.Compose([
         ZScoreNormalizeSpectrogram(),
         transforms.Resize((224, 224), antialias=True),
-        FrequencyMasking(freq_mask_param=20),
-        TimeMasking(time_mask_param=20) 
+        ApplyMultipleMasks(num_time_masks=2, num_freq_masks=2, num_masks=2, freq_param = 15),
+        AddGaussianNoise(std=0.01)
     ])
 
     print(f"Loading CQT data from {FEATURES_DIR}...")
@@ -272,8 +361,8 @@ def main():
     model = TransformerSpectrogramClassifier(
         model_name=ENCODER_NAME, 
         pretrained=PRETRAINED_ENCODER,
-        num_classes=2,
-        dropout_prob=0.5
+        num_classes=1,
+        dropout_prob=0.3
     ).to(device)
     print(f"Model is using Transformer: {ENCODER_NAME}, Pretrained: {PRETRAINED_ENCODER}")
 
@@ -284,11 +373,14 @@ def main():
     )
 
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    print(f"Class Weights: {class_weights}")
+    #criterion = nn.CrossEntropyLoss(weight=class_weights)
+    #criterion = FocalLoss(alpha=class_weights, gamma=2.0, label_smoothing=0.1)
+    pos_weights = torch.tensor([4.0], dtype=torch.float).to(device)
+    criterion = BinaryFocalLoss(alpha=0.1, gamma=2.0,pos_weight=pos_weights, reduction='mean')
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
 
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
-
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2) 
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, threshold=1e-3, min_lr=1e-6) 
 
     model_path = os.path.join(CHECKPOINTS_DIR, f'{ENCODER_NAME}_{SPECTROGRAM_TYPE}_best_model.pth')
     
