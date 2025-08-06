@@ -252,41 +252,6 @@ class FocalLoss(nn.Module): # type: ignore
             return focal_loss.sum()
         else:
             return focal_loss
-
-
-class FocalLoss(nn.Module):
-
-    def __init__(self, alpha=None, gamma=2.0, reduction='mean', label_smoothing=0.0):
-        """
-            alpha: Tensor of Shape(C, ) for class weights or scalar for uniform weight
-            gamma: Focusing Parameter 
-            label_smoothing: Applies smoothing to hard labels
-        """
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-        self.label_smoothing = label_smoothing
-
-    def forward(self, inputs, targets):
-        ce_loss = nn.functional.cross_entropy(
-            inputs,
-            targets,
-            weight=self.alpha,
-            reduction='none',
-            label_smoothing=self.label_smoothing
-        )
-        pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-
-        if self.reduction == 'mean':
-            return focal_loss.mean()
-        elif self.reduction == 'sum':
-            return focal_loss.sum()
-        else:
-            return focal_loss
-
-
 class BinaryFocalLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2.0, pos_weight=None, reduction='mean'):
         super(BinaryFocalLoss, self).__init__()
