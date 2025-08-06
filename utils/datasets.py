@@ -1,13 +1,16 @@
 import os
+from typing import List, Optional
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
 import numpy as np
+import glob
 #Added the torchAudio transforms
 import torchaudio.transforms as T
 from torchvision.transforms import functional as TF
 from PIL import Image
 
-class SpectrogramDataset(Dataset):
+class SpectrogramDataset(Dataset): 
     def __init__(self, data_dir, category='normal', transform = None, spec_type='stft'):
         """
         Args:
@@ -67,7 +70,93 @@ class SpectrogramDataset(Dataset):
             'label': label, 
             'path': spec_path
         }    
+
+
+class CQTSpectrogramDataset(Dataset):
+    def __init__(self, data_dir: str, label_type: str, transform=None, spec_type: str = 'cqt', file_paths: Optional[List[str]]= None, labels: Optional[List[int]]=None):
+        """
+            label_type: 'normal' or 'abnormal'
+            file_paths and labels: Optional - if provided they override auto-loaded
+        """
+        self.data_dir = data_dir
+        self.label_type = label_type
+        self.transform = transform
+        self.spec_type = spec_type
+
+        if file_paths is not None and labels is not None:
+            self.all_file_paths = file_paths
+            self.labels = labels
+        else:
+            self.all_file_paths, self.labels = self._load_data()
+
+    def _load_data(self):
+        pattern = os.path.join(self.data_dir, '**', self.label_type, self.spec_type, '*.npy')
+        files = sorted(glob.glob(pattern, recursive=True))
+        label = 0 if self.label_type == 'normal' else 1
+        return files, [label] * len(files)
+    
+    def __len__(self):
+        return len(self.all_file_paths)
+    
+    def __getitem__(self, idx):
+        spec_path = self.all_file_paths[idx]
+        spec = np.load(spec_path)
+        spec = torch.from_numpy(spec).float() 
+
+        if spec.ndim == 2:
+            spec = spec.unsqueeze(0)
+ 
+        if self.transform:
+            spec = self.transform(spec)
         
+        label = self.labels[idx]
+        return {'spectrogram': spec, 'label': label}
+
+
+class CQTSpectrogramDataset_1(Dataset):
+    def __init__(self, data_dir: str, label_type: str, transform=None, spec_type: str = 'cqt', file_paths: Optional[List[str]]= None, labels: Optional[List[int]]=None, normal_transform=None, abnormal_transform=None):
+        """
+            label_type: 'normal' or 'abnormal'
+            file_paths and labels: Optional - if provided they override auto-loaded
+        """
+        self.data_dir = data_dir
+        self.label_type = label_type
+        self.transform = transform
+        self.spec_type = spec_type
+        self.normal_transform = normal_transform
+        self.abnormal_transform = abnormal_transform
+
+        if file_paths is not None and labels is not None:
+            self.all_file_paths = file_paths
+            self.labels = labels
+        else:
+            self.all_file_paths, self.labels = self._load_data()
+
+    def _load_data(self):
+        pattern = os.path.join(self.data_dir, '**', self.label_type, self.spec_type, '*.npy')
+        files = sorted(glob.glob(pattern, recursive=True))
+        label = 0 if self.label_type == 'normal' else 1
+        return files, [label] * len(files)
+    
+    def __len__(self):
+        return len(self.all_file_paths)
+    
+    def __getitem__(self, idx):
+        spec_path = self.all_file_paths[idx]
+        spec = np.load(spec_path)
+        spec = torch.from_numpy(spec).float() 
+        label = self.labels[idx]
+        # if spec.ndim == 2:
+        #     spec = spec.unsqueeze(0)
+        if self.normal_transform and label == 0:
+            spec = self.normal_transform(spec)
+        elif self.abnormal_transform and label == 1:
+            spec = self.abnormal_transform(spec)
+        elif self.transform:
+            spec = self.transform(spec)
+        
+        return {'spectrogram': spec, 'label': label}
+
 class NormalizeSpectrogram:
     """
         Min-Max normalization to [0,1]
@@ -115,7 +204,7 @@ class AugmentSpectrogram:
         return spectrogram
     
 
-class ResizeSpectroram:
+class ResizeSpectrogram:
     def __init__(self, size=(224, 224)):
         self.size = size
 
@@ -131,3 +220,99 @@ class ResizeSpectroram:
             return torch.from_numpy(img).unsqueeze(0)
         else:
             raise TypeError("Unsupported type for ResizeSpectrogram")
+        
+class FocalLoss(nn.Module): # type: ignore
+
+    def __init__(self, alpha=None, gamma=2.0, reduction='mean', label_smoothing=0.0):
+        """
+            alpha: Tensor of Shape(C, ) for class weights or scalar for uniform weight
+            gamma: Focusing Parameter 
+            label_smoothing: Applies smoothing to hard labels
+        """
+        super(FocalLoss, self).__init__() # type: ignore
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+        self.label_smoothing = label_smoothing
+
+    def forward(self, inputs, targets):
+        ce_loss = nn.functional.cross_entropy(
+            inputs,
+            targets,
+            weight=self.alpha,
+            reduction='none',
+            label_smoothing=self.label_smoothing
+        )
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+
+class FocalLoss(nn.Module):
+
+    def __init__(self, alpha=None, gamma=2.0, reduction='mean', label_smoothing=0.0):
+        """
+            alpha: Tensor of Shape(C, ) for class weights or scalar for uniform weight
+            gamma: Focusing Parameter 
+            label_smoothing: Applies smoothing to hard labels
+        """
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+        self.label_smoothing = label_smoothing
+
+    def forward(self, inputs, targets):
+        ce_loss = nn.functional.cross_entropy(
+            inputs,
+            targets,
+            weight=self.alpha,
+            reduction='none',
+            label_smoothing=self.label_smoothing
+        )
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+
+class BinaryFocalLoss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2.0, pos_weight=None, reduction='mean'):
+        super(BinaryFocalLoss, self).__init__()
+        print("BinaryFocalLoss initialized with pos_weight =", pos_weight)
+
+        self.alpha = alpha
+        self.gamma = gamma
+        self.pos_weight = pos_weight
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        targets = targets.float().view(-1,1)  # Ensure shape [B, 1]
+        ce_loss = nn.functional.binary_cross_entropy_with_logits(
+            inputs, targets,
+            pos_weight=self.pos_weight,
+            reduction='none'
+        )
+
+        probs = torch.sigmoid(inputs)
+        pt = torch.where(targets == 1, probs, 1 - probs)
+        focal_weight = self.alpha * (1 - pt) ** self.gamma
+        loss = focal_weight * ce_loss
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        else:
+            return loss
