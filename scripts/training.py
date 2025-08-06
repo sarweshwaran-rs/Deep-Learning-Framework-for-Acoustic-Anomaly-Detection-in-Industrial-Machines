@@ -157,6 +157,17 @@ def evaluate_model(model, data_loader, criterion, phase="Evaluation"):
     acc_score = accuracy_score(all_labels, all_classes)
 
     print(f"{phase} Loss:{avg_loss:.4f}, {phase} AUC: {auc_score:.4f}, {phase} Accuracy: {acc_score:.4f}")
+    
+    print(f"\n[DEBUG] {phase} Prediction Distribution:")
+    pred_counter = Counter(all_classes)
+    label_counter = Counter(all_labels)
+    print(f"Predicted Classes: {dict(pred_counter)}")
+    print(f"True Labels:       {dict(label_counter)}")
+
+    print(f"\nSample Predictions vs Labels:")
+    for i in range(min(10, len(all_labels))):
+        print(f"Sample {i+1}: Pred = {all_classes[i]}, Prob = {all_preds[i]:.4f}, True = {all_labels[i]}")
+    
     return avg_loss, auc_score, acc_score, all_labels, all_preds
 
 
