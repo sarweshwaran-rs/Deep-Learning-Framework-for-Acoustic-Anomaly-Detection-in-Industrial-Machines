@@ -33,9 +33,9 @@ class CAFM(nn.Module):
         out_1 = torch.bmm(attention_1, V1)
 
         # CQT attends to STFT
-        Q2 = self.wq4(stft_seq)
-        K2 = self.wq5(cqt_seq)
-        V2 = self.wq6(cqt_seq)
+        Q2 = self.wq4(cqt_seq)
+        K2 = self.wq5(stft_seq)
+        V2 = self.wq6(stft_seq)
         attention_2 = self.softmax(torch.bmm(Q2, K2.transpose(1, 2)) / (C ** 0.5))
         out_2 = torch.bmm(attention_2, V2)
 
