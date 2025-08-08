@@ -285,20 +285,33 @@ class BinaryFocalLoss(nn.Module):
 # Dataset to support the Dual-input Version
 
 class PairedSpectrogramDataset(Dataset):
-    def __init__(self, base_dir, category='normal'):
+    def __init__(self, base_dir):
         self.stft_paths, self.cqt_paths = [], []
         self.labels = []
-        self.category = category.lower()
+        self.categories, self.machine_ids = [], []
 
         for machine in os.listdir(base_dir):
-            stft_dir = os.path.join(base_dir, machine, category, 'stft')
-            cqt_dir = os.path.join(base_dir, machine, category, 'cqt')
+            machine_path = os.path.join(base_dir, machine)
+            if not os.path.isdir(machine_path):
+                continue
+            machine_id = int(machine.split('_')[-1]) #id_00 -> 0
+            for category in ['normal', 'abnormal']:
+                stft_dir = os.path.join(machine_path, category, 'stft')
+                cqt_dir = os.path.join(machine_path, category, 'cqt')
 
-            for filename in os.listdir(stft_dir):
-                if filename.endswith('.npy'):
-                    self.stft_paths.append(os.path.join(stft_dir, filename))
-                    self.cqt_paths.append(os.path.join(cqt_dir, filename))
-                    self.labels.append(0 if category == 'normal' else 1)
+                if not (os.path.isdir(stft_dir) and os.path.isdir(cqt_dir)):
+                    continue
+
+                for filename in os.listdir(stft_dir):
+                    if filename.endswith('.npy'):
+                        stft_path = os.path.join(stft_dir, filename)
+                        cqt_path = os.path.join(cqt_dir, filename)
+
+                        self.stft_paths.append(stft_path)
+                        self.cqt_paths.append(cqt_path)
+                        self.labels.append(0 if category == 'normal' else 1)
+                        self.machine_ids.append(machine_id)
+                        self.categories.append(category)
     
     def __len__(self):
         return len(self.stft_paths)
@@ -306,4 +319,13 @@ class PairedSpectrogramDataset(Dataset):
     def __getitem__(self, idx):
         stft = torch.tensor(np.load(self.stft_paths[idx]), dtype=torch.float32).unsqueeze(0)
         cqt = torch.tensor(np.load(self.cqt_paths[idx]), dtype=torch.float32).unsqueeze(0)
-        return stft, cqt, self.labels[idx]
+        
+        return {
+            'stft': stft, 
+            'cqt': cqt, 
+            'label' :self.labels[idx],
+            'machine_id': self.machine_ids[idx],
+            'category': self.categories[idx],
+            'stft_path': self.stft_paths[idx],
+            'cqt_path' : self.cqt_paths[idx]
+        }
