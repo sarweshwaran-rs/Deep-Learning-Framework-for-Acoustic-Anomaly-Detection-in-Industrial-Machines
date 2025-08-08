@@ -213,19 +213,19 @@ def evaluate_model(model, loader, criterion, phase):
             loss = criterion(outputs, labels)
             running_loss += loss.item() * spectrograms.size(0)
             
-            probs = torch.softmax(outputs, dim=1)[:, 1]
-            preds = torch.argmax(outputs, dim=1)
+            # probs = torch.softmax(outputs, dim=1)[:, 1]
+            # preds = torch.argmax(outputs, dim=1)
             #For BinaryFocalLoss
-            # probs = torch.sigmoid(outputs).squeeze()
-            # preds = (probs > 0.2).long()
+            probs = torch.sigmoid(outputs).squeeze()
+            preds = (probs > 0.2).long()
             
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(probs.cpu().numpy())
-            all_classes.extend(preds.cpu().numpy())
+            # all_labels.extend(labels.cpu().numpy())
+            # all_preds.extend(probs.cpu().numpy())
+            # all_classes.extend(preds.cpu().numpy())
             # For BinaryFocalLoss
-            # all_labels.extend(labels.cpu().numpy().flatten().tolist())
-            # all_preds.extend(probs.cpu().numpy().flatten().tolist())
-            # all_classes.extend(preds.cpu().numpy().flatten().tolist())
+            all_labels.extend(labels.cpu().numpy().flatten().tolist())
+            all_preds.extend(probs.cpu().numpy().flatten().tolist())
+            all_classes.extend(preds.cpu().numpy().flatten().tolist())
 
     avg_loss = running_loss / len(loader.dataset)
     auc_score = roc_auc_score(all_labels, all_preds) if len(np.unique(all_labels)) > 1 else float('nan')
