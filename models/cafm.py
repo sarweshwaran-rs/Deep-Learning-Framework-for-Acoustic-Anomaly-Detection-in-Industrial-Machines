@@ -41,8 +41,8 @@ class CAFM(nn.Module):
 
         # Mean pool and Fuse
         fused = torch.cat([out_1.mean(1), out_2.mean(1)], dim=1)
-        print(f"Fused shape before MLP[Multi Layer Perceptron]: {fused.shape}")
+        # print(f"Fused shape before MLP[Multi Layer Perceptron]: {fused.shape}")
         output = self.out(fused)
-        print(f"Output shape after MLP [Multi Layer Perceptron]: {output.shape}")
+        # print(f"Output shape after MLP [Multi Layer Perceptron]: {output.shape}")
         return output
         
