@@ -281,3 +281,29 @@ class BinaryFocalLoss(nn.Module):
             return loss.sum()
         else:
             return loss
+        
+# Dataset to support the Dual-input Version
+
+class PairedSpectrogramDataset(Dataset):
+    def __init__(self, base_dir, category='normal'):
+        self.stft_paths, self.cqt_paths = [], []
+        self.labels = []
+        self.category = category.lower()
+
+        for machine in os.listdir(base_dir):
+            stft_dir = os.path.join(base_dir, machine, category, 'stft')
+            cqt_dir = os.path.join(base_dir, machine, category, 'cqt')
+
+            for filename in os.listdir(stft_dir):
+                if filename.endswith('.npy'):
+                    self.stft_paths.append(os.path.join(stft_dir, filename))
+                    self.cqt_paths.append(os.path.join(cqt_dir, filename))
+                    self.labels.append(0 if category == 'normal' else 1)
+    
+    def __len__(self):
+        return len(self.stft_paths)
+    
+    def __getitem__(self, idx):
+        stft = torch.tensor(np.load(self.stft_paths[idx]), dtype=torch.float32).unsqueeze(0)
+        cqt = torch.tensor(np.load(self.cqt_paths[idx]), dtype=torch.float32).unsqueeze(0)
+        return stft, cqt, self.labels[idx]
