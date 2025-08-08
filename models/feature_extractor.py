@@ -8,7 +8,7 @@ class STFTFeatureExtractor(nn.Module):
         super().__init__()
         resnet = resnet18(weights=None)
         self.stem = nn.Sequential(
-            resnet.conv1,
+            nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False),
             resnet.bn1,
             resnet.relu,
             resnet.maxpool
@@ -34,7 +34,7 @@ class STFTFrequencyAdaptiveFeatureExtractor(nn.Module):
         super().__init__()
         resnet = resnet18(weights=None)
         self.stem = nn.Sequential(
-            resnet.conv1,
+            nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False),
             resnet.bn1,
             resnet.relu,
             resnet.maxpool
@@ -71,6 +71,9 @@ class CQTFeatureExtractor(nn.Module):
         super().__init__()
         self.model = create_model('mobilevit_xxs', pretrained=False,num_classes=0, global_pool='')
 
+        self.model.stem.conv = nn.Conv2d( # type: ignore
+            1, 16, kernel_size=3, stride=2, padding=1, bias=False
+        )
     def forward(self,x):
         return self.model(x)
 
