@@ -1,6 +1,7 @@
 import torch.nn as nn
 from torchvision.models import resnet18
 from timm import create_model
+import matplotlib.pyplot as plt 
 
 class STFTFeatureExtractor(nn.Module):
     def __init__(self):
@@ -84,3 +85,25 @@ class FeatureProjector(nn.Module):
         x = self.proj(x)
         x = self.pool(x)
         return x
+
+# Code to Visualize the Extracted Feature Pairs    
+def visualize_feature_maps(feature_tensor, titile_prefix, num_channels=8):
+    """
+        Feature tesor: torch.Tensor of shape (B,C,H,W)
+    """
+
+    feature_tensor = feature_tensor.squeeze(0)
+    C = feature_tensor.shape[0]
+    num_channels = min(num_channels, C)
+
+    plt.figure(figsize=(12,4))
+    for i in range(num_channels):
+        fmap = feature_tensor[i].cpu().numpy()
+
+        fmap = (fmap - fmap.min()) / (fmap.max() - fmap.min() + 1e-5)
+        plt.subplot(1, num_channels, i+1)
+        plt.imshow(fmap, cmap='viridis', aspect='auto')
+        plt.axis('off')
+        plt.title(f"{titile_prefix} C{i}")
+    plt.tight_layout()
+    plt.show()
