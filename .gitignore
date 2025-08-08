@@ -16,3 +16,6 @@ capstone/Lib
 
 *.pdf
 Progress_Tracking
+
+scripts/sample.py
+scripts/train_mobile_cqt.py
