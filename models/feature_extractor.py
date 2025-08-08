@@ -81,7 +81,7 @@ class CQTFeatureExtractor(nn.Module):
 class FeatureProjector(nn.Module):
     def __init__(self, in_channels, out_channels=256, target_hw=(4,16)):
         super().__init__()
-        self.proj = nn.Conv2d(in_channels, out_channels=256, kernel_size=1)
+        self.proj = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
         self.pool = nn.AdaptiveAvgPool2d(target_hw)
 
     def forward(self, x):
