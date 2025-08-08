@@ -19,3 +19,6 @@ Progress_Tracking
 
 scripts/sample.py
 scripts/train_mobile_cqt.py
+*.csv
+*.pt
+*.pth
