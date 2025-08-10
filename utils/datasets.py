@@ -285,7 +285,8 @@ class BinaryFocalLoss(nn.Module):
 # Dataset to support the Dual-input Version
 
 class PairedSpectrogramDataset(Dataset):
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, transform=None): #Added the transfomration option
+        self.transform = transform
         self.stft_paths, self.cqt_paths = [], []
         self.labels = []
         self.categories, self.machine_ids = [], []
@@ -320,6 +321,10 @@ class PairedSpectrogramDataset(Dataset):
         stft = torch.tensor(np.load(self.stft_paths[idx]), dtype=torch.float32).unsqueeze(0)
         cqt = torch.tensor(np.load(self.cqt_paths[idx]), dtype=torch.float32).unsqueeze(0)
         
+        if self.transform is not None:
+            stft = self.transform(stft)
+            cqt = self.transform(cqt)
+                         
         return {
             'stft': stft, 
             'cqt': cqt, 
