@@ -4,7 +4,6 @@ from torch.utils.data import DataLoader
 import pandas as pd
 import os
 
-from utils.datasets import PairedSpectrogramDataset
 from models.feature_extractor import STFTFeatureExtractor, CQTFeatureExtractor, FeatureProjector, STFTFrequencyAdaptiveFeatureExtractor
 from models.cafm import CAFM
 
