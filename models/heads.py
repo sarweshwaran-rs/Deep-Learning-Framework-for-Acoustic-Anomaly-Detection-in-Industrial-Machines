@@ -3,16 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class AnomalyScorer(nn.Module):
-    def __init__(self, in_dim=256, mode = 'classifier'):
+    def __init__(self, in_dim=256, dropout = 0.5, mode = 'classifier'):
         super().__init__()
 
         self.mode = mode
+        self.dropout = nn.Dropout(p=dropout)
 
         if mode == 'classifier':
             self.head = nn.Sequential(
                 nn.Linear(in_dim, 128),
                 nn.ReLU(),
-                nn.Linear(128,1) # Binary Classification
+                self.dropout,
+                nn.Linear(128,1), # Binary Classification
             )
         elif mode == 'prototype':
             self.prototype = nn.Parameter(torch.randn(in_dim)) # Learnable normal prototype
@@ -22,6 +24,7 @@ class AnomalyScorer(nn.Module):
             return self.head(x) # logits for BCEWithLogitsLoss
         
         elif self.mode == 'prototype':
+            x = self.dropout(x)
             return x,self.prototype # Returns the raw embeddgings and prototype for external scoring
 
 # ---------------------------------------------------------
