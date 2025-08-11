@@ -31,12 +31,13 @@ class AnomalyScorer(nn.Module):
 # Simple MLP Anomaly Head (Binary Classifier)
 # ---------------------------------------------------------
 class SimpleAnomalyMLP(nn.Module):
-    def __init__(self, in_dim=256, hidden=128, out_dim=1):
+    def __init__(self, in_dim=256, dropout=0.2, hidden=128, out_dim=1):
         super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            self.dropout,
             nn.Linear(hidden, out_dim)
         )
 
