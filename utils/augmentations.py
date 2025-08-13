@@ -27,8 +27,10 @@ class SpecAugment:
     Frequency and Time Masking on Spectrograms.  Accepts (freq, time) or (1, freq, time).
     """
     def __init__(self, freq_mask_param=15, time_mask_param=35, n_freq_masks=1, n_time_masks=1):
-        self.fm = torchaudio.transforms.FrequencyMasking(freq_mask_param)
-        self.tm = torchaudio.transforms.TimeMasking(time_mask_param)
+        self.fm = freq_mask_param
+        self.tm = time_mask_param
+        self.FM = torchaudio.transforms.FrequencyMasking(self.fm)
+        self.TM = torchaudio.transforms.TimeMasking(self.tm)
         self.nf = n_freq_masks
         self.nt = n_time_masks
 
@@ -41,9 +43,9 @@ class SpecAugment:
             raise ValueError("SpecAugment expects single spectrogram, got batched input")
         
         for _ in range(self.nf): 
-            spec = self.fm(spec)
+            spec = self.FM(spec)
         for _ in range(self.nt):
-            spec = self.tm(spec)
+            spec = self.TM(spec)
         
         return spec
 
