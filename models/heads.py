@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class AnomalyScorer(nn.Module):
-    def __init__(self, in_dim=256, dropout = 0.5, mode = 'classifier-1'):
+    def __init__(self, in_dim=256, dropout = 0.4, mode = 'classifier-1'):
         super().__init__()
 
         self.mode = mode
@@ -31,7 +31,7 @@ class AnomalyScorer(nn.Module):
 # Simple MLP Anomaly Head (Binary Classifier)
 # ---------------------------------------------------------
 class SimpleAnomalyMLP(nn.Module):
-    def __init__(self, in_dim=256, dropout=0.2, hidden=128, out_dim=1):
+    def __init__(self, in_dim=256, dropout=0.4, hidden=128, out_dim=1):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.net = nn.Sequential(
@@ -46,11 +46,13 @@ class SimpleAnomalyMLP(nn.Module):
 
 # Embedding Head
 class EmbeddingMLP(nn.Module):
-    def __init__(self, in_dim=256, hidden=128, emb_dim=64):
+    def __init__(self, in_dim=256, hidden=128, dropout=0.4, emb_dim=64):
         super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden),
             nn.ReLU(inplace=True),
+            self.dropout,
             nn.Linear(hidden, emb_dim)
         )
         self.normal_prototype = nn.Parameter(torch.randn(emb_dim))
