@@ -4,7 +4,7 @@ from models.feature_extractor import STFTFeatureExtractor, CQTFeatureExtractor, 
 from models.cafm import CAFM
 
 class FusedModel(nn.Module):
-    def __init__(self, stft_dim=512, cqt_dim=320, fusion_dim=256, head=None, head_mode='classifier'):
+    def __init__(self, stft_dim=512, cqt_dim=320, fusion_dim=256, head=None, head_mode='classifier-1'):
         super().__init__()
         self.head_mode = head_mode
         self.head = head
