@@ -58,3 +58,21 @@ class EmbeddingMLP(nn.Module):
         self.normal_prototype = nn.Parameter(torch.randn(emb_dim))
     def forward(self, x):
         return self.net(x) # Returns embedding tensor (B, emd_dim)
+
+class ComplexAnomalyMLP(nn.Module):
+    def __init__(self, in_dim=256, dropout=0.4, out_dim=1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        self.net = nn.Sequential(
+            nn.Linear(in_dim,256),
+            nn.ReLU(),
+            self.dropout,
+
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            self.dropout,
+            nn.Linear(128,out_dim)
+        )
+    def forward(self,x):
+        return self.net(x)
