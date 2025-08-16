@@ -9,8 +9,8 @@ class FusedModel(nn.Module):
         self.head_mode = head_mode
         self.head = head
 
-        self.stft_net = STFTFeatureExtractor()
-        # self.stft_net = STFTFrequencyAdaptiveFeatureExtractor()
+        # self.stft_net = STFTFeatureExtractor()
+        self.stft_net = STFTFrequencyAdaptiveFeatureExtractor()
         self.cqt_net = CQTFeatureExtractor()
         self.stft_proj = FeatureProjector(stft_dim)  # should output [B, fusion_dim, H', W']
         self.cqt_proj = FeatureProjector(cqt_dim)
