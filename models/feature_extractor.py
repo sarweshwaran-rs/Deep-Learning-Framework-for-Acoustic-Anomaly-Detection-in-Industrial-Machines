@@ -55,6 +55,16 @@ class STFTFrequencyAdaptiveFeatureExtractor(nn.Module):
                 padding=(kernel_size[0] // 2, kernel_size[1] // 2),
                 bias=False 
             )
+
+            block.conv2 = nn.Conv2d(
+                in_channels=block.conv2.in_channels,
+                out_channels=block.conv2.out_channels,
+                kernel_size=kernel_size,
+                stride=block.conv2.stride,
+                padding=(kernel_size[0] // 2, kernel_size[1] // 2),
+                bias=False
+            )
+            
         return layer
     
     def forward(self, x):
