@@ -334,3 +334,68 @@ class PairedSpectrogramDataset(Dataset):
             'stft_path': self.stft_paths[idx],
             'cqt_path' : self.cqt_paths[idx]
         }
+
+class PairedSpectrogramDatasetCS(Dataset):
+    def __init__(self, base_dir, class_to_transform=None):
+        """
+        Args: 
+            base_dir(str): Path to dataset root directory
+            class_to_transform (dict): Dictionary mapping label -> transform
+                Example: {
+                    0: normal_transform,
+                    1: abnormal_transform
+                }
+        """
+        self.class_to_transform = class_to_transform if class_to_transform else {}
+        self.stft_paths, self.cqt_paths = [], []
+        self.labels, self.categories, self.machine_ids [], [], [] # type: ignore
+
+        for machine in os.listdir(base_dir):
+            machine_path = os.path.join(base_dir, machine)
+            if not os.path.isdir(machine_path):
+                continue
+            machine_id = int(machine.split('_')[-1])
+            for category in ['normal', 'abnormal']:
+                stft_dir = os.path.join(machine_path, category, 'stft')
+                cqt_dir = os.path.join(machine_path, category, 'cqt')
+
+                if not (os.path.isdir(stft_dir)) and os.path.isdir(cqt_dir):
+                    continue
+
+                for filename in os.listdir(stft_dir):
+                    if filename.endswith('.npy'):
+                        stft_path = os.path.join(stft_dir, filename)
+                        cqt_path = os.path.join(cqt_dir, filename)
+
+                        self.stft_paths.append(stft_path)
+                        self.cqt_paths.append(cqt_path)
+                        label = 0 if category =='normal' else 1
+                        self.labels.append(label) # type: ignore
+                        self.machine_ids.append(machine_id) # type: ignore
+                        self.categories.append(category) # type: ignore
+
+
+    def __len__(self):
+        return len(self.stft_paths)
+    
+    def __getitem__(self, idx):
+        stft = torch.tensor(np.load(self.stft_paths[idx]), dtype=torch.float32).unsqueeze(0)
+        cqt = torch.tensor(np.load(self.cqt_paths[idx]), dtype=torch.float32).unsqueeze(0)
+        label = self.labels(idx) # type: ignore
+
+        # Apply class-specific transform if available
+        if self.class_to_transform and label in self.class_to_transform:
+            transform = self.class_to_transform[label]
+            if transform is not None:
+                stft = transform(stft)
+                cqt = transform(cqt)
+
+        return {
+            'stft':stft,
+            'cqt':cqt,
+            'label':self.labels[idx], # type: ignore
+            'machine_id':self.machine_ids[idx], # type: ignore
+            'category':self.categories[idx], # type: ignore
+            'stft_path':self.stft_paths[idx],
+            'cqt_path':self.cqt_paths[idx]
+        }
