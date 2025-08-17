@@ -221,69 +221,9 @@ class ResizeSpectrogram:
         else:
             raise TypeError("Unsupported type for ResizeSpectrogram")
         
-class FocalLoss(nn.Module): # type: ignore
 
-    def __init__(self, alpha=None, gamma=2.0, reduction='mean', label_smoothing=0.0):
-        """
-            alpha: Tensor of Shape(C, ) for class weights or scalar for uniform weight
-            gamma: Focusing Parameter 
-            label_smoothing: Applies smoothing to hard labels
-        """
-        super(FocalLoss, self).__init__() # type: ignore
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-        self.label_smoothing = label_smoothing
 
-    def forward(self, inputs, targets):
-        ce_loss = nn.functional.cross_entropy(
-            inputs,
-            targets,
-            weight=self.alpha,
-            reduction='none',
-            label_smoothing=self.label_smoothing
-        )
-        pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-
-        if self.reduction == 'mean':
-            return focal_loss.mean()
-        elif self.reduction == 'sum':
-            return focal_loss.sum()
-        else:
-            return focal_loss
-class BinaryFocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0, pos_weight=None, reduction='mean'):
-        super(BinaryFocalLoss, self).__init__()
-        print("BinaryFocalLoss initialized with pos_weight =", pos_weight)
-
-        self.alpha = alpha
-        self.gamma = gamma
-        self.pos_weight = pos_weight
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        targets = targets.float().view(-1,1)  # Ensure shape [B, 1]
-        ce_loss = nn.functional.binary_cross_entropy_with_logits(
-            inputs, targets,
-            pos_weight=self.pos_weight,
-            reduction='none'
-        )
-
-        probs = torch.sigmoid(inputs)
-        pt = torch.where(targets == 1, probs, 1 - probs)
-        focal_weight = self.alpha * (1 - pt) ** self.gamma
-        loss = focal_weight * ce_loss
-
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        else:
-            return loss
-        
 # Dataset to support the Dual-input Version
-
 class PairedSpectrogramDataset(Dataset):
     def __init__(self, base_dir, transform=None): #Added the transfomration option
         self.transform = transform
