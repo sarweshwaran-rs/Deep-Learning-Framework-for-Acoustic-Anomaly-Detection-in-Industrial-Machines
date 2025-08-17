@@ -423,7 +423,7 @@ def plot_confusion_matrix(y_true, y_pred, labels, save_path, title="Consusion Ma
         title (str): Title for the plot
     """
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8,16))
+    plt.figure(figsize=(10,16))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.xlabel('Predicted Lable')
     plt.ylabel('True Lable')
@@ -532,16 +532,16 @@ def run_and_save_gradcams(model, cams, dataset, device, out_dir="gradcam_outputs
 
 FEATURES_DIR = r'data\features'
 BATCH_SIZE = 32
-NUM_EPOCHS = 5
-LR = 1e-4
+NUM_EPOCHS = 30
+LR = 5e-5
 WEIGHT_DECAY = 1e-3
 CHECKPOINT_DIR = r'checkpoints'
 CONTRASTIVE_MARGIN = 0.5
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-HEAD_MODE = 'classifier-1'
+HEAD_MODE = 'mlp'
 EMB_DIM = 64
 
-save_path = os.path.join(CHECKPOINT_DIR,'DFCA', '[Anomaly-With-Transformations-dropout=0.4](5)_classifier-1')
+save_path = os.path.join(CHECKPOINT_DIR,'DFCA', '[Anomaly-With-Transformations-dropout=0.4](30)_MLP(5e-5)')
 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 def main():
     
@@ -555,7 +555,7 @@ def main():
     train_transforms = ComposeT([
         ToTensor(),
         SpecTimePitchWarp(max_time_scale=1.1, max_freq_scale=1.1),
-        SpecAugment(freq_mask_param=10, time_mask_param=10, n_freq_masks=1, n_time_masks=1),
+        SpecAugment(freq_mask_param=4, time_mask_param=4, n_freq_masks=2, n_time_masks=2),
     ])
 
     no_transform = ComposeT([
@@ -697,9 +697,9 @@ def main():
     ).to(device)
     
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, eta_min=1e-6)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, eta_min=5e-5)
     
-    model_path = os.path.join(CHECKPOINT_DIR, 'DFCA', '[Anomaly-With-Transformations-dropout=0.4](5)_classifier-1', "best_model.pth")
+    model_path = os.path.join(CHECKPOINT_DIR, 'DFCA', '[Anomaly-With-Transformations-dropout=0.4](30)_MLP(5e-5)', "best_model.pth")
     os.makedirs(os.path.dirname(model_path), exist_ok=True)  
     best_threshold = train_model(model, train_loader, val_loader, criterion, optimizer, head_mode, scheduler, num_epochs=NUM_EPOCHS, model_save_path=model_path, device=device, save_plots=True)
     
@@ -712,8 +712,8 @@ def main():
     print(f"\nFinal Test Metrics (with best validation threshold {best_threshold:.2f}):")
     print(f"Loss: {test_loss:.4f} | AUC: {test_auc:.4f} | Accuracy: {test_acc:.4f} | Balanced Accuracy: {test_bacc:.4f} | F1-Score: {test_f1:.4f}")
     if len(np.unique(all_labels_test)) > 1:
-        final_pauc = calculate_pAUC(all_labels_test, all_probs_test, max_fpr=0.1)
-        print(f"Final Test pAUC (FPR <= 0.1): {final_pauc:.4f}")
+        final_pauc = calculate_pAUC(all_labels_test, all_probs_test, max_fpr=0.2)
+        print(f"Final Test pAUC (FPR <= 0.2): {final_pauc:.4f}")
     else:
         print("Test set contains only one class; cannot compute AUC/pAUC")
 
@@ -737,7 +737,7 @@ def main():
 
     try:
         cams = build_gradcam_for_model(model, device)
-        run_and_save_gradcams(model, cams, test_set,device, out_dir=os.path.join(CHECKPOINT_DIR,"DFCA","[Anomaly-With-Transformations-dropout=0.4](5)_classifier-1","gradcam"),n_samples=8)
+        run_and_save_gradcams(model, cams, test_set,device, out_dir=os.path.join(CHECKPOINT_DIR,"DFCA","[Anomaly-With-Transformations-dropout=0.4](30)_MLP(5e-5)","gradcam"),n_samples=8)
     except Exception as error:
         print(f"GradCAM step failed: {error}")
 
