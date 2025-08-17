@@ -348,7 +348,7 @@ class PairedSpectrogramDatasetCS(Dataset):
         """
         self.class_to_transform = class_to_transform if class_to_transform else {}
         self.stft_paths, self.cqt_paths = [], []
-        self.labels, self.categories, self.machine_ids [], [], [] # type: ignore
+        self.labels, self.categories, self.machine_ids = [], [], [] # type: ignore
 
         for machine in os.listdir(base_dir):
             machine_path = os.path.join(base_dir, machine)
@@ -381,7 +381,7 @@ class PairedSpectrogramDatasetCS(Dataset):
     def __getitem__(self, idx):
         stft = torch.tensor(np.load(self.stft_paths[idx]), dtype=torch.float32).unsqueeze(0)
         cqt = torch.tensor(np.load(self.cqt_paths[idx]), dtype=torch.float32).unsqueeze(0)
-        label = self.labels(idx) # type: ignore
+        label = self.labels[idx] # type: ignore
 
         # Apply class-specific transform if available
         if self.class_to_transform and label in self.class_to_transform:
