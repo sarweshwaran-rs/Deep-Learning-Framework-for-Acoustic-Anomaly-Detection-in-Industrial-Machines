@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torchvision.models import resnet18
 from timm import create_model
@@ -120,3 +121,21 @@ def visualize_feature_maps(feature_tensor, titile_prefix, num_channels=8):
         plt.title(f"{titile_prefix} C{i}")
     plt.tight_layout()
     plt.show()
+
+
+# ===== SpectralPositionalEncoding =====
+class SpectralPositionalEncoding(nn.Module):
+    """
+    Adds frequency-wise positional encoding to a 4D feature tensor (B,C,F,T).
+    The encoding is broadcas along the time dimension
+    """
+    def __init__(self, num_freqs, dim):
+        super().__init__()
+        self.positional_encoding = nn.Parameter(torch.randn(1,dim, num_freqs,1)) # (1,C,F,1)
+
+    def forward(self, x):
+        # x: (B,C,F,T)
+        B,C,F,T = x.shape
+        pe = self.positional_encoding.expand(B,C,F,T)
+        
+        return x + pe
