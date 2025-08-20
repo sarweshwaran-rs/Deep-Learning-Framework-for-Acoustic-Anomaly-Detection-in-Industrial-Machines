@@ -339,3 +339,28 @@ class PairedSpectrogramDatasetCS(Dataset):
             'stft_path':self.stft_paths[idx],
             'cqt_path':self.cqt_paths[idx]
         }
+
+class WindowedPairedSpectrogramDataset(Dataset):
+    def __init__(self, base_dataset, window_size=5):
+        self.base = base_dataset
+        self.window_size = window_size
+
+    def __len__(self):
+        return len(self.base) - self.window_size + 1
+
+    def __getitem__(self, idx):
+        stft_seq = []
+        cqt_seq = []
+        labels_seq = []
+        for i in range(self.window_size):
+            item = self.base[idx + i]
+            stft_seq.append(item['stft'].unsqueeze(0))  # (1, C, H, W)
+            cqt_seq.append(item['cqt'].unsqueeze(0))
+            labels_seq.append(item['label'])
+        stft_seq = torch.cat(stft_seq, dim=0)   # (T, C, H, W)
+        cqt_seq = torch.cat(cqt_seq, dim=0)
+        return {
+            'stft': stft_seq,  # (T, C, H, W)
+            'cqt': cqt_seq,
+            'label': labels_seq[-1]  # use last label or customize as needed
+        }
