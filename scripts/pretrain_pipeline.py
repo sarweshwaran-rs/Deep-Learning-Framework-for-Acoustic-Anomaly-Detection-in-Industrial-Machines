@@ -42,57 +42,66 @@ class FusedModel(nn.Module):
 
     def forward(self, stft, cqt):
         """
-        Args:
-            stft: [B, T, C, H, W] or [B, C, H, W]
-            cqt:  [B, T, C, H, W] or [B, C, H, W]
-        Returns:
-            If use_decoder: [B, T] (sequence of scores)
-            Else: [B, ...] (batch scores/embeddings)
+            Args:
+                stft: [B, T, C, H, W] or [B, C, H, W]
+                cqt:  [B, T, C, H, W] or [B, C, H, W]
+            Returns:
+                If use_decoder: [B, T] (sequence of scores)
+                Else: [B, ...] (batch scores/embeddings)
         """
         if self.use_decoder:
-            # Sequence mode: stft/cqt [B, T, C, H, W]
+            # Sequence mode: expect [B, T, C, H, W]
+            if stft.dim() != 5 or cqt.dim() != 5:
+                raise ValueError("use_decoder=True expects [B, T, C, H, W] inputs")
+
             B, T, C, H, W = stft.shape
             fused_seq = []
-            # SPE init on first time step
-            stft_raw = self.stft_net(stft[:, 0])
-            cqt_raw = self.cqt_net(cqt[:, 0])
-            stft_feat_init = self.stft_proj(stft_raw)
-            cqt_feat_init = self.cqt_proj(cqt_raw)
-            if self.stft_spe is None or self.cqt_spe is None:
-                _, C2, F, TT = stft_feat_init.shape
+
+            # Initialize SPE on first frame
+            stft_feat_init = self.stft_proj(self.stft_net(stft[:, 0]))
+            cqt_feat_init  = self.cqt_proj(self.cqt_net(cqt[:, 0]))
+
+            _, C2, F, TT = stft_feat_init.shape
+            if self.stft_spe is None:
                 self.stft_spe = SpectralPositionalEncoding(num_freqs=F, dim=C2).to(stft_feat_init.device)
-                self.cqt_spe = SpectralPositionalEncoding(num_freqs=cqt_feat_init.shape[2], dim=cqt_feat_init.shape[1]).to(cqt_feat_init.device)
+            if self.cqt_spe is None:
+                self.cqt_spe = SpectralPositionalEncoding(num_freqs=cqt_feat_init.shape[2],
+                                                          dim=cqt_feat_init.shape[1]).to(cqt_feat_init.device)
 
+            # Process each frame
             for t in range(T):
-                stft_raw = self.stft_net(stft[:, t])
-                cqt_raw = self.cqt_net(cqt[:, t])
-                stft_feat = self.stft_proj(stft_raw)
-                cqt_feat = self.cqt_proj(cqt_raw)
+                stft_feat = self.stft_spe(self.stft_proj(self.stft_net(stft[:, t])))
+                cqt_feat  = self.cqt_spe(self.cqt_proj(self.cqt_net(cqt[:, t])))
+                fused = self.fuser(stft_feat, cqt_feat)      # [B, fusion_dim]
+                fused_seq.append(fused.unsqueeze(1))         # [B, 1, fusion_dim]
 
-                stft_feat = self.stft_spe(stft_feat)
-                cqt_feat = self.cqt_spe(cqt_feat)
-                fused = self.fuser(stft_feat, cqt_feat)  # [B, fusion_dim]
-                fused_seq.append(fused.unsqueeze(1))     # [B, 1, fusion_dim]
+            fused_seq = torch.cat(fused_seq, dim=1)         # [B, T, fusion_dim]
 
-            fused_seq = torch.cat(fused_seq, dim=1)      # [B, T, fusion_dim]
-            scores = self.temporal_decoder(fused_seq)    # [B, T]
-            if self.head is not None:
-                scores = self.head(scores)               # pass scores through head, if provided
-            return scores
+            # Always compute temporal decoder output
+            seq_scores = self.temporal_decoder(fused_seq)   # [B, T]
+
+            # Compute head output (pooled across time)
+            pooled = fused_seq.mean(dim=1)                 # [B, fusion_dim]
+            head_out = self.head(pooled) if self.head is not None else None
+
+            # Return both head output and sequence scores
+            return head_out, seq_scores
+        
         else:
-            # Single frame mode: stft/cqt [B, C, H, W]
-            stft_raw = self.stft_net(stft)
-            cqt_raw = self.cqt_net(cqt)
-            stft_feat = self.stft_proj(stft_raw)
-            cqt_feat = self.cqt_proj(cqt_raw)
+            # Single-frame mode (unchanged)
+            if stft.dim() != 4 or cqt.dim() != 4:
+                raise ValueError("use_decoder=False expects [B, C, H, W] inputs")
+
+            stft_feat = self.stft_proj(self.stft_net(stft))
+            cqt_feat  = self.cqt_proj(self.cqt_net(cqt))
 
             if self.stft_spe is None or self.cqt_spe is None:
                 B, C, F, T = stft_feat.shape
                 self.stft_spe = SpectralPositionalEncoding(num_freqs=F, dim=C).to(stft_feat.device)
-                self.cqt_spe = SpectralPositionalEncoding(num_freqs=cqt_feat.shape[2], dim=cqt_feat.shape[1]).to(cqt_feat.device)
+                self.cqt_spe  = SpectralPositionalEncoding(num_freqs=cqt_feat.shape[2], dim=cqt_feat.shape[1]).to(cqt_feat.device)
 
             stft_feat = self.stft_spe(stft_feat)
-            cqt_feat = self.cqt_spe(cqt_feat)
+            cqt_feat  = self.cqt_spe(cqt_feat)
 
             if stft_feat.dim() != 4 or cqt_feat.dim() != 4:
                 raise RuntimeError(
@@ -100,12 +109,7 @@ class FusedModel(nn.Module):
                     "Check FeatureProjector to ensure it does not flatten."
                 )
 
-            fused = self.fuser(stft_feat, cqt_feat)  # [B, fusion_dim]
+            fused = self.fuser(stft_feat, cqt_feat) # [B, fusion_dim]
             if self.head is None:
-                raise ValueError("Head is None. Please provide a valid head module to FusedModel.")
-            
-            if self.head_mode == "prototype":
-                embeddings, prototype = self.head(fused)
-                return embeddings, prototype
-            else:
-                return self.head(fused)
+                return fused
+            return self.head(fused)
