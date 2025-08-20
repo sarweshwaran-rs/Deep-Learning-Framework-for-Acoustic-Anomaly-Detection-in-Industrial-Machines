@@ -25,3 +25,4 @@ scripts/train_1.py
 *.pth
 *.png
 *.xlsx
+Notebooks/test.ipynb
