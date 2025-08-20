@@ -24,8 +24,12 @@ class AnomalyScorer(nn.Module):
             return self.head(x) # logits for BCEWithLogitsLoss
         
         elif self.mode == 'prototype':
+            if x.dim() == 3:
+                x = x.mean(dim=1)
+            
             x = self.dropout(x)
-            return x,self.prototype # Returns the raw embeddgings and prototype for external scoring
+            dist = torch.norm(x - self.prototype, dim=1, keepdim=True)
+            return dist
 
 # ---------------------------------------------------------
 # Simple MLP Anomaly Head (Binary Classifier)
