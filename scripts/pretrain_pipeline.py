@@ -78,7 +78,7 @@ class FusedModel(nn.Module):
             fused_seq = torch.cat(fused_seq, dim=1)         # [B, T, fusion_dim]
 
             # Always compute temporal decoder output
-            seq_scores = self.temporal_decoder(fused_seq)   # [B, T]
+            seq_scores = self.temporal_decoder(fused_seq)   # [B,]
 
             # Compute head output (pooled across time)
             pooled = fused_seq.mean(dim=1)                 # [B, fusion_dim]
