@@ -14,7 +14,8 @@ from torchvision import transforms
 from sklearn.utils import shuffle
 
 #----- Custom Imports -----
-from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram, AugmentSpectrogram
+from utils.datasets import SpectrogramDataset
+from utils.augmentations import ZScoreNormalizeSpectrogram, AugmentSpectrogram
 from models.cnn_encoders import BasicSpectrogramClassifier
 
 #----- Paths and the Configuration -----
