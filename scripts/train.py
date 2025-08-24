@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 from collections import Counter, defaultdict
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score, accuracy_score, balanced_accuracy_score, roc_curve, auc, f1_score, confusion_matrix
+from sklearn.metrics import roc_auc_score, accuracy_score, balanced_accuracy_score, roc_curve, f1_score
 from tqdm import tqdm
-import seaborn as sns
 
 from scripts.pretrain_pipeline import FusedModel
 from utils.augmentations import ComposeT, ToTensor, SpecTimePitchWarp, SpecAugment
@@ -196,7 +195,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, head_mode
             cqt = batch['cqt'].to(device)
             labels = batch['label'].to(device).long()
 
-            #DEBUG
+            # DEBUG
             for lbl in labels.cpu().numpy():
                 class_counts_train[int(lbl)] +=1
 
