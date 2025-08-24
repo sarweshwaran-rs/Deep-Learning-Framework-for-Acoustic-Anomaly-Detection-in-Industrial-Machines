@@ -14,7 +14,8 @@ from torchvision import transforms
 from sklearn.utils import shuffle
 
 #----- Custom Imports -----
-from utils.datasets import SpectrogramDataset, ZScoreNormalizeSpectrogram, AugmentSpectrogram
+from utils.datasets import SpectrogramDataset 
+from utils.augmentations import ZScoreNormalizeSpectrogram, AugmentSpectrogram
 from models.transformers_encoders import TransformerSpectrogramClassifier
 
 #----- Paths and the Configuration -----
@@ -29,7 +30,7 @@ NUM_EPOCH = 4
 SAVE_PLOTS = True
 
 SPECTROGRAM_TYPE = 'cqt'
-ENCODER_NAME = 'mobilevit_xs'
+ENCODER_NAME = 'mobilevit_xxs'
 PRETRAINED_ENCODER = True
 
 #----- Setting the device -----
