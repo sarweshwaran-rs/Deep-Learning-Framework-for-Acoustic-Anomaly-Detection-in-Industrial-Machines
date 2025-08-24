@@ -14,70 +14,16 @@ from tqdm import tqdm
 import seaborn as sns
 
 from scripts.pretrain_pipeline import FusedModel
-from utils.augmentations import ComposeT, ToTensor, SpecTimePitchWarp, SpecAugment, GradCAM
+from utils.augmentations import ComposeT, ToTensor, SpecTimePitchWarp, SpecAugment
 from models.heads import AnomalyScorer, SimpleAnomalyMLP, EmbeddingMLP
 from models.losses import ContrastiveLoss
+from utils.gradcam_utils import build_gradcam_for_model, run_and_save_gradcams
+from utils.metrics_utils import calculate_pAUC, plot_confusion_matrix
 from utils.datasets import PairedSpectrogramDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using Device: {device} - {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu'}")
 
-def calculate_pAUC(labels, preds, max_fpr = 0.1):
-    """
-    Calculates Partial AUC (pAUC) for a given FPR range.
-    Args:
-        labels (array): True binary labels.
-        preds (array): Predicted probabilities for the positive class.
-        max_fpr (float): Maximum False Positive Rate for pAUC calculation.
-    Returns:
-        float: pAUC score.
-    """
-    if len(np.unique(labels)) < 2:
-        return float('nan')
-    
-    fpr, tpr, _ = roc_curve(labels, preds)
-    #filter for FPR <= max_fpr
-    mask = fpr <= max_fpr
-    fpr_filtered, tpr_filtered = fpr[mask], tpr[mask] 
-      
-    if fpr_filtered.size == 0:
-        return 0.0
-
-    if fpr_filtered.max() < max_fpr:
-        idx = np.where(fpr <= max_fpr)[0][-1]
-        if idx + 1 < len(fpr):
-            x1, y1 = fpr[idx], tpr[idx]
-            x2, y2 = fpr[idx + 1], tpr[idx + 1]
-            tpr_interp = y1 + (y2 - y1) * (max_fpr - x1) / (x2 - x1) if (x2 - x1) > 0 else y1
-            fpr_filtered = np.append(fpr_filtered, max_fpr)
-            tpr_filtered = np.append(tpr_filtered, tpr_interp)
-            sort_idx = np.argsort(fpr_filtered)
-            fpr_filtered = fpr_filtered[sort_idx]
-            tpr_filtered = tpr_filtered[sort_idx]
-
-    return auc(fpr_filtered, tpr_filtered) / max_fpr if len(fpr_filtered) >= 2 else 0.0
-
-def find_last_conv(module, name_contains=None):
-    """
-    Returns (module_ref, full_name) of the last nn.Conv2d found in module.
-    If name_contains is provided, prefer conv modules whose name includes that substring.
-    """
-    last = (None, None)
-    for n,m in module.named_modules():
-        if isinstance(m, nn.Conv2d):
-            last = (m,n)
-        
-    if name_contains:
-        # Try to find last conv with name containing substring
-        cand = (None, None)
-        for n, m in module.named_modules():
-            if isinstance(m,nn.Conv2d) and name_contains in n.lower():
-                cand = (m,n)
-        
-        if cand[0] is not None:
-            return cand
-    
-    return last
 
 def evaluate_model(model, data_loader, criterion, phase="Evaluation", device=device, head_mode='classifier', sample_count=10, threshold=0.5):
     """
@@ -413,119 +359,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, head_mode
 
     return best_threshold
 
-def plot_confusion_matrix(y_true, y_pred, labels, save_path, title="Consusion Matrix"):
-    """
-    Plots a comfusion matrix for model evaluation
-    Args:
-        y_true (list or np.array): Ground truth labels.
-        y_pred (list or np.array): Predicted labels.
-        labels (list): A list of labels for the matrix axes (['Normal', 'Abnormal'])
-        title (str): Title for the plot
-    """
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(10,16))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
-    plt.xlabel('Predicted Lable')
-    plt.ylabel('True Lable')
-    plt.title(title)
-    plt.savefig(os.path.join(save_path, "Confusion Matrix.png"))
-    # plt.show()
-
-# -------------------------------
-# GradCAM Utilities
-# -------------------------------
-def prepare_gradcam_targets(model, device):
-    """
-    Heuristic: try to find conv layers for stft and cqt branches by name
-    Fallback: the last conv in the model
-    Return dict {'stft':module, 'cqt':module}
-    """
-    targets = {}
-    stft_conv = find_last_conv(model, name_contains='stft')
-    cqt_conv = find_last_conv(model, name_contains='cqt')
-
-    if stft_conv[0] is None:
-        stft_conv = find_last_conv(model, name_contains=None)
-    if cqt_conv[0] is None:
-        cqt_conv = find_last_conv(model, name_contains=None)
-    
-    targets['stft'] = stft_conv[0]
-    targets['cqt'] = cqt_conv[0]
-    
-    return targets
-
-def build_gradcam_for_model(model, device):
-    targets = prepare_gradcam_targets(model, device)
-    cams = {}
-    if targets['stft'] is not None:
-        cams['stft'] = GradCAM(model, targets['stft'])
-    if targets['cqt'] is not None:
-        cams['cqt'] = GradCAM(model, targets['cqt'])
-    return cams
-
-def run_and_save_gradcams(model, cams, dataset, device, out_dir="gradcam_outputs", n_samples=8):
-    os.makedirs(out_dir, exist_ok=True)
-    model.eval()
-    saved = 0
-    for i in range(len(dataset)):
-        item = dataset[i]
-        stft = item['stft'].unsqueeze(0).to(device)
-        cqt = item['cqt'].unsqueeze(0).to(device)
-        label = int(item['label'])
-
-        #forward pass to get logtis
-        logits = model(stft, cqt)
-        #Pick scalar to backprop
-        if logits.ndim == 2 and logits.shape[1] == 2:
-            target_score = logits[:,1].squeeze()
-        else:
-            if logits.ndim == 2 and logits.shape[1] == 1:
-                target_score = logits.squeeze(1)
-            else:
-                target_score = logits
-        
-        #stft gradcam
-        for branch, cam in cams.items():
-            try:
-                scalar = target_score.sum()
-                heat = cam.heatmap(stft if branch =='stft' else cqt, scalar, device)
-            except Exception as e:
-                print(f"GradCAM failed for sample {i} branch {branch}: {e}")
-                heat = None
-            
-            # save overlay
-            base = (stft.squeeze(0).cpu().numpy() if branch =='stft' else cqt.squeeze(0).cpu().numpy())
-            if base.ndim == 3:
-                base_img = base[0]
-            else:
-                base_img = base
-            
-            # normalize base_img to 0..1
-            base_img = base_img - base_img.min()
-            if base_img.max() > 0:
-                base_img = base_img / base_img.max()
-            # Save figure
-            plt.figure(figsize=(6,4))
-            plt.imshow(base_img, aspect='auto', origin='lower')
-            if heat is not None:
-                cmap = plt.get_cmap('jet')
-                heat_resized = np.flipud(heat)
-                plt.imshow(heat_resized, cmap=cmap, alpha=0.5, extent=(0,base_img.shape[1], 0, base_img.shape[0]))
-            plt.title(f"GradCAM {branch.upper()} - label:{label} idx:{i}")
-            fname = os.path.join(out_dir, f"gradcam_{branch}_idx_{i}_label{label}.png")
-            plt.colorbar()
-            plt.tight_layout()
-            plt.savefig(fname)
-            plt.close()
-        saved +=1
-        if saved >= n_samples:
-            break
-
-    # remove hooks
-    for cam in cams.values():
-        cam.remove_hooks()
-    print(f"Saved {saved} GradCAM images to {out_dir}")
-
 # ================================
 # Main Pipeline 
 # ================================
@@ -540,6 +373,7 @@ CONTRASTIVE_MARGIN = 0.5
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 HEAD_MODE = 'mlp'
 EMB_DIM = 64
+USE_TEMPORAL_DECODER = True
 
 save_path = os.path.join(CHECKPOINT_DIR,'DFCA', '[Anomaly-With-Transformations-dropout=0.4](30)_MLP(5e-5)')
 os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -693,7 +527,7 @@ def main():
         raise ValueError("Invalid Head_Mode")
     
     model = FusedModel(
-        stft_dim=512, cqt_dim=320, fusion_dim=256, head=head, head_mode=head_mode,
+        stft_dim=512, cqt_dim=320, fusion_dim=256, head=head, head_mode=head_mode, use_decoder=USE_TEMPORAL_DECODER, temporal_hidden=64
     ).to(device)
     
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
