@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
  
 BASE_DIR = r'C:\Users\sarwe\raw'
 DATA_RAW_DIR = os.path.join(BASE_DIR, '-6_dB_pump')
-FEATURES_DIR = os.path.join(BASE_DIR, '-6_dB_features_CQT')
+FEATURES_DIR = os.path.join(BASE_DIR, '-6_dB_features')
  
 SR = 16000 
 N_FFT_STFT = 512 
