@@ -5,10 +5,11 @@ import torch
 from tqdm import tqdm 
  
 BASE_DIR = r'C:\Users\sarwe\raw'
-DATA_RAW_DIR = os.path.join(BASE_DIR, '0_dB_pump')
-FEATURES_DIR = os.path.join(BASE_DIR, '0_dB_features')
+DATA_RAW_DIR = os.path.join(BASE_DIR, '-6_dB_fan')
+FEATURES_DIR = os.path.join(r'F:\CapStone\DFCA\data\features', '-6_dB_fan_features')
 print(f"Extracting Feature from: {DATA_RAW_DIR}")
 print(f"Storing the Extracting Feature in the  {FEATURES_DIR}")
+
 SR = 16000 
 N_FFT_STFT = 512 
 HOP_LENGTH_STFT = 256 
