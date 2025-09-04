@@ -42,28 +42,41 @@ def calculate_pAUC(labels, preds, max_fpr = 0.1):
 
 def plot_confusion_matrix(y_true, y_pred, labels, save_path, title="Confusion Matrix"):
     """
-        Plots a confusion matrix for model evaluation
+    Plots a confusion matrix for model evaluation.
     Args:
         y_true (list or np.array): Ground truth labels.
         y_pred (list or np.array): Predicted labels.
-        labels (list): A list of labels for the matrix axes (['Normal', 'Abnormal'])
-        title (str): Title for the plot
+        labels (list): A list of labels for the matrix axes (['Normal', 'Abnormal']).
+        title (str): Title for the plot.
     """
     cm = confusion_matrix(y_true, y_pred)
-    tn, fp, fn, tp = cm.ravel()
+    
+    # Handle cases with fewer than 4 values from confusion_matrix (e.g., only one class predicted)
+    if cm.size == 1: # Only one class present and predicted correctly
+        if y_true[0] == 0: # All are True Negatives
+            tn, fp, fn, tp = cm.ravel()[0], 0, 0, 0
+        else: # All are True Positives
+            tn, fp, fn, tp = 0, 0, 0, cm.ravel()[0]
+    else:
+        tn, fp, fn, tp = cm.ravel()
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
 
     print(f"TP: {tp} | TN: {tn} | FP: {fp} | FN: {fn} | Precision: {precision:.4f} | Recall: {recall:.4f} | Specificity: {specificity:.4f}")
-    plt.figure(figsize=(8,8))
+    plt.figure(figsize=(8, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.xlabel('Predicted Label')
     plt.ylabel('True Label')
     plt.title(title)
     os.makedirs(save_path, exist_ok=True)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_path, "Confusion Matrix.png"))
+
+    # --- MODIFIED LINE ---
+    # Create a filename from the title to ensure it is unique for each dataset
+    filename = f"{title.replace(' ', '_')}.png"
+    plt.savefig(os.path.join(save_path, filename))
+    
     plt.show()
     plt.close()
