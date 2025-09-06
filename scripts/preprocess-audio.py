@@ -3,12 +3,13 @@ import librosa
 import numpy as np 
 import torch 
 from tqdm import tqdm 
-import matplotlib.pyplot as plt 
  
 BASE_DIR = r'C:\Users\sarwe\raw'
-DATA_RAW_DIR = os.path.join(BASE_DIR, '-6_dB_pump')
-FEATURES_DIR = os.path.join(BASE_DIR, '-6_dB_features')
- 
+DATA_RAW_DIR = os.path.join(BASE_DIR, '0_dB_valve')
+FEATURES_DIR = os.path.join(r'F:\CapStone\DFCA\data\features', '0_dB_valve_features')
+print(f"Extracting Feature from: {DATA_RAW_DIR}")
+print(f"Storing the Extracting Feature in the  {FEATURES_DIR}")
+
 SR = 16000 
 N_FFT_STFT = 512 
 HOP_LENGTH_STFT = 256 
@@ -40,7 +41,7 @@ def process_audio_file(audio_path):
     log_mel_spectrogram = librosa.power_to_db(S_mel, ref=np.max) 
     log_mel_spectrogram = minmax_normalize(log_mel_spectrogram)
     
-    CQT = librosa.cqt(y,sr=sr, hop_length=HOP_LENGTH_STFT, bins_per_octave=BINS_PER_OCTAVE_CQT, n_bins=N_BINS_CQT) 
+    CQT = librosa.cqt(y,sr=sr, hop_length=512, bins_per_octave=BINS_PER_OCTAVE_CQT, n_bins=N_BINS_CQT) 
     cqt_spectrogram = librosa.amplitude_to_db(np.abs(CQT), ref=np.max) 
  
     return log_mel_spectrogram.astype(np.float32), cqt_spectrogram.astype(np.float32) 
@@ -81,7 +82,7 @@ def main():
                 lms_spec, cqt_spec = process_audio_file(audio_path) 
  
                 #save the features with the id_folder and category folder 
-                np.save(os.path.join(output_stft_dir, f"{base_name}.npy"), lms_spec) 
+                np.save(os.path.join(output_stft_dir, f"{unique_name}.npy"), lms_spec) 
                 np.save(os.path.join(output_cqt_dir, f"{unique_name}.npy"),cqt_spec) 
  
             print("\nPreprocessing Complete") 
