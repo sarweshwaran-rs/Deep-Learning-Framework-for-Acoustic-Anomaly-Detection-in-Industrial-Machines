@@ -35,7 +35,7 @@ def process_audio(audio_bytes: bytes):
 
     S_stft = librosa.stft(y=y, n_fft=N_FFT_STFT,hop_length=HOP_LENGTH_STFT) 
     S_mel = librosa.feature.melspectrogram(S=np.abs(S_stft), sr=sr, n_mels=N_MELS_STFT, hop_length=HOP_LENGTH_STFT) 
-    log_mel_spectrogram = librosa.power_to_db(S_mel, ref=np.max) 
+    log_mel_spectrogram = librosa.power_to_db(S_mel, ref=np.max)  # type: ignore
     log_mel_spectrogram = minmax_normalize(log_mel_spectrogram)
     
     CQT = librosa.cqt(y,sr=sr, hop_length=512, bins_per_octave=BINS_PER_OCTAVE_CQT, n_bins=N_BINS_CQT) 
