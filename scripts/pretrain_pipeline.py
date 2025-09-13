@@ -113,3 +113,43 @@ class FusedModel(nn.Module):
             if self.head is None:
                 return fused
             return self.head(fused)
+        
+
+class FusedModelNoSPE(nn.Module):
+    """
+    Dual-branch model with spectral positional encoding and optional temporal smoothing decoder.
+
+    Args:
+        stft_dim (int): Output channels for STFT branch projector.
+        cqt_dim (int): Output channels for CQT branch projector.
+        fusion_dim (int): Output channels for fusion block.
+        head (nn.Module, optional): Classification or embedding head module.
+        head_mode (str): Head output mode. Default 'classifier-1'.
+    """
+    def __init__(self,stft_dim=512,cqt_dim=320,fusion_dim=256,head=None):
+        super().__init__()
+        self.head = head
+
+        # Feature extractors
+        self.stft_net = STFTFrequencyAdaptiveFeatureExtractor()
+        self.cqt_net = CQTFeatureExtractor()
+        self.stft_proj = FeatureProjector(stft_dim)
+        self.cqt_proj = FeatureProjector(cqt_dim)
+        self.fuser = CAFM(fusion_dim)
+    
+    def forward(self, stft, cqt):
+        if stft.dim() != 4 or cqt.dim() != 4:
+            raise ValueError("use_decoder=False expects [B, C, H, W] inputs")
+
+        stft_feat = self.stft_proj(self.stft_net(stft))
+        cqt_feat  = self.cqt_proj(self.cqt_net(cqt))
+        if stft_feat.dim() != 4 or cqt_feat.dim() != 4:
+            raise RuntimeError(
+                f"Expected 4D tensors before CAFM, got stft:{stft_feat.shape}, cqt:{cqt_feat.shape}. "
+                "Check FeatureProjector to ensure it does not flatten."
+            )
+
+        fused = self.fuser(stft_feat, cqt_feat) # [B, fusion_dim]
+        if self.head is None:
+            return fused
+        return self.head(fused)
