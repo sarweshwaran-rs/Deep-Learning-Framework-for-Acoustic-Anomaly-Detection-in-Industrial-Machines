@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.feature_extractor import STFTFeatureExtractor, CQTFeatureExtractor
 class AnomalyScorer(nn.Module):
     def __init__(self, in_dim=256, dropout = 0.4, mode = 'classifier-1'):
         super().__init__()
@@ -80,3 +81,48 @@ class ComplexAnomalyMLP(nn.Module):
         )
     def forward(self,x):
         return self.net(x)
+class STFTResNetClassifier(nn.Module):
+    def __init__(self, head):
+        super().__init__()
+        self.backbone = STFTFeatureExtractor()
+        self.pool = nn.AdaptiveAvgPool2d((1,1))
+        self.head = head
+    
+    def extract_features(self, x):
+        x = self.backbone(x)  # feature map before head
+        x = torch.flatten(x, start_dim=1)
+        return x
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        pooled_features = self.pool(features)
+        flattend_features = torch.flatten(pooled_features, 1)
+        logits = self.head(flattend_features)
+        return logits
+    
+
+class CQTMobileViTClassifier(nn.Module):
+    """
+    A complete classifier that combines the CQTFeatureExtractor (backbone)
+    with any given classification head.
+    """
+    def __init__(self, head):
+        super().__init__()
+        self.backbone = CQTFeatureExtractor()
+
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.head = head
+
+    def extract_features(self, x):
+        x = self.backbone(x)  # feature map before head
+        x = torch.flatten(x, start_dim=1)
+        return x
+    
+    def forward(self, x):
+        # Data flow: input -> backbone -> pool -> flatten -> head -> output
+        features = self.backbone(x)
+        pooled_features = self.pool(features)
+        flattened_features = torch.flatten(pooled_features, 1)
+        logits = self.head(flattened_features)
+        return logits
