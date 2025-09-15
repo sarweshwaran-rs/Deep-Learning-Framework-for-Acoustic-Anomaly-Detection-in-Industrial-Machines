@@ -163,7 +163,7 @@ if __name__ == "__main__":
     run_tsne(feats_cqt, labels, "CQT", "tsne_cqt.png")
 
     # ------------------------
-    # CAFM (no SPE, no decoder)
+    # CAFM (no SPE)
     # ------------------------
     cafm_model = FusedModelNoSPE().to(device)
     cafm_model.load_state_dict(torch.load(r"F:\CapStone\DFCA\checkpoints\Models\CAFM\best_model.pth", map_location=device), strict=False)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     run_tsne(feats_cafm_spe, labels, "CAFM+SPE", "tsne_cafm_spe.png")
 
     # ------------------------
-    # CAFM + SPE + TSD
+    # CAFM + SPE
     # ------------------------
     cafm_spe_ts_model = FusedModel(use_decoder=True).to(device)
     cafm_spe_ts_model.load_state_dict(torch.load(r"F:\CapStone\DFCA\checkpoints\DFCAFinalNet\best_model.pth", map_location=device), strict=False)
