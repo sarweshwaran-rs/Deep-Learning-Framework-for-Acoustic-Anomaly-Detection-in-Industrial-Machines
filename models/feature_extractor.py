@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from torchvision.models import resnet18
+from torchvision.models import resnet18, efficientnet_b0, densenet121
+import torch.nn.functional as F
 from timm import create_model
 import matplotlib.pyplot as plt 
 
@@ -27,6 +28,53 @@ class STFTFeatureExtractor(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
+        return x
+
+class STFTFeatureExtractor_EfficientNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        efficientnet = efficientnet_b0(weights=None)
+
+        efficientnet.features[0][0] = nn.Conv2d(
+            1, 32, kernel_size=3, stride=2, padding=1, bias=False
+        )
+
+        self.stem = efficientnet.features[0]   
+        self.block1 = efficientnet.features[1]
+        self.block2 = efficientnet.features[2]
+        self.block3 = efficientnet.features[3]
+        self.block4 = efficientnet.features[4]
+        self.block5 = efficientnet.features[5]
+        self.block6 = efficientnet.features[6]
+        self.block7 = efficientnet.features[7]
+        self.block8 = efficientnet.features[8]
+
+    def forward(self, x):
+        x = self.stem(x)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        x = self.block7(x)
+        x = self.block8(x)  
+
+        return x
+
+class STFTFeatureExtractor_DenseNet121(nn.Module):
+    def __init__(self):
+        super().__init__()
+        densenet = densenet121(weights=None)
+
+        densenet.features.conv0 = nn.Conv2d(
+            1, 64, kernel_size=8, stride=2, padding=3, bias=False
+        )
+
+        self.features = densenet.features
+    
+    def forward(self, x):
+        x = self.features(x)
         return x
 
 # STFT Feature Extractor with Novalty planned Frequency adaptive convolution
@@ -87,6 +135,33 @@ class CQTFeatureExtractor(nn.Module):
         )
     def forward(self,x):
         return self.model(x)
+
+class CQTFeatureExtractor_SwinTiny(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = create_model(
+            'swin_tiny_patch4_window7_224', pretrained=False, num_classes=0, global_pool='', img_size=None
+        )
+        self.model.patch_embed.img_size = None # type: ignore
+        self.model.patch_embed.strict_img_size = False # type: ignore
+
+        self.model.patch_embed.proj = nn.Conv2d( # type: ignore
+            1, 96, kernel_size=4, stride=4
+        )
+
+    def forward(self, x):
+        x = F.interpolate(x, size=(224,224), mode="bilinear", align_corners=False)
+        return self.model(x)
+
+class CQTFeatureExtractor_ConvNeXtTiny(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = create_model('convnext_tiny', pretrained=False, num_classes=0, global_pool='')
+        # Input conv to 1 channel
+        self.model.stem[0] = nn.Conv2d(1, 96, kernel_size=4, stride=4)  # type: ignore
+
+    def forward(self, x):
+        return self.model(x)   # [B, 768, H/32, W/32]
 
 #Projection + Polling Block to Match the Channels, Height, and Width of the Extractor Features to Match with the Shape(4,16) with 256 Channel Size
 class FeatureProjector(nn.Module):
