@@ -25,4 +25,12 @@ scripts/train_1.py
 *.pth
 *.png
 *.xlsx
+*.jpg
 Notebooks/test.ipynb
+Notebooks/Additive_Fusion.py
+Notebooks/Additive_Fusion.ipynb
+Notebooks/Bilinear.ipynb
+Notebooks/densenet_stft.ipynb
+Notebooks/GatedFusion.py
+Notebooks/efficient_Stft.ipynb
+Notebooks/swintiny_cqt.ipynb
