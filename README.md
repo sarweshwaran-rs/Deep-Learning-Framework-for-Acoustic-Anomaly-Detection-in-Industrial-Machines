@@ -12,7 +12,6 @@ A comprehensive deep learning solution for detecting anomalies in industrial mac
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
 - [Usage](#usage)
 - [Performance](#performance)
 ---
