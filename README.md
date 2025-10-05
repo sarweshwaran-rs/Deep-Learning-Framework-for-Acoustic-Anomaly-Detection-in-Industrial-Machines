@@ -3,9 +3,6 @@
 ## 🔧 Industrial Machine Anomaly Detection System
 
 A comprehensive deep learning solution for detecting anomalies in industrial machinery using audio signal analysis. The system combines STFT and CQT spectrograms through a novel Dual Frequency Cross-Attention Network (DFCA-Net) architecture.
-
-![DFCA-Net Architecture](https://img.shields.io/badge/Architecture-DFCA--Net-blue) ![Python](https://img.shields.io/badge/Python-3.8+-green) ![PyTorch](https://img.shields.io/badge/PyTorch-1.9+-red) ![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-teal) ![React](https://img.shields.io/badge/React-18+-blue)
-
 ---
 
 ## 📋 Table of Contents
@@ -17,11 +14,10 @@ A comprehensive deep learning solution for detecting anomalies in industrial mac
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
-- [Model Training](#model-training)
 - [Performance](#performance)
 ---
 
-## 🎯 Overview
+## Overview
 
 DFCA-Net is an advanced anomaly detection system specifically designed for industrial machinery monitoring. By analyzing audio signals from machines, the system can detect potential faults and anomalies before they lead to costly failures.
 
@@ -70,7 +66,7 @@ Audio Input → Preprocessing → Dual Frequency Extraction → Cross-Attention 
 
 ---
 
-## ✨ Features
+## Features
 
 ### Machine Learning
 - **Dual Frequency Processing**: STFT + CQT spectrograms
@@ -81,7 +77,7 @@ Audio Input → Preprocessing → Dual Frequency Extraction → Cross-Attention 
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 DFCA/
@@ -144,7 +140,7 @@ DFCA/
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 
@@ -181,7 +177,7 @@ npm install
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### 1. Start Backend API
 
@@ -201,7 +197,7 @@ The web application will be available at:
 - **Frontend**: http://localhost:5173
 ---
 
-## 📖 Usage
+## Usage
 
 ### Web Interface
 
@@ -247,7 +243,7 @@ print(f"Confidence: {result['confidicence']}")
 
 ---
 
-## 📊 Performance
+## Performance
 
 ### Model Metrics
 
@@ -279,7 +275,7 @@ print(f"Confidence: {result['confidicence']}")
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -307,54 +303,3 @@ FUSION_DIM = 256
 THRESHOLD = 0.65
 SAMPLE_RATE = 16000
 ```
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Model Loading Error**
-   ```bash
-   # Check model path and permissions
-   ls -la checkpoints/DFCAFinalNet/best_model.pth
-   ```
-
-2. **CUDA/GPU Issues**
-   ```bash
-   # Verify PyTorch CUDA installation
-   python -c "import torch; print(torch.cuda.is_available())"
-   ```
-
-3. **File Upload Errors**
-   - Ensure file is in .wav format
-   - Check file size (< 50MB)
-   - Verify audio file is not corrupted
-
-4. **API Connection Issues**
-   - Confirm backend is running on port 8000
-   - Check CORS settings for frontend URL
-   - Verify firewall settings
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-# Backend debug mode
-LOG_LEVEL=DEBUG python run_api.py
-
-# Frontend development mode
-npm run dev
-```
-### Documentation
-- **API Docs**: http://localhost:8000/docs
-
-
-## 🙏 Acknowledgments
-
-- Industrial machine audio datasets
-- PyTorch and FastAPI communities
-- React and Tailwind CSS frameworks
-- Research contributions in anomaly detection
-
