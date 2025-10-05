@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DFCA-Net API Documentation</title>
+    <link rel="shortcut icon" href="https://fastapi.tiangolo.com/img/favicon.png">
+    <style>
+        .custom-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .custom-header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        .custom-header p {
+            margin: 0.5rem 0 0 0;
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .feature-card {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .feature-card h3 {
+            margin: 0 0 0.5rem 0;
+            color: #333;
+        }
+        .feature-card p {
+            margin: 0;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .stats-container {
+            background: #e3f2fd;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            text-align: center;
+        }
+        .stat-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            display: block;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="custom-header">
+        <h1>🔧 DFCA-Net API</h1>
+        <p>Industrial Machine Anomaly Detection using Deep Learning</p>
+    </div>
+    
+    <div style="max-width: 1200px; margin: 0 auto; padding: 0 2rem;">
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>🎯 High Accuracy</h3>
+                <p>Advanced neural networks with cross-attention mechanisms for precise anomaly detection</p>
+            </div>
+            <div class="feature-card">
+                <h3>⚡ Real-time Processing</h3>
+                <p>Get instant results within seconds of uploading your audio file</p>
+            </div>
+            <div class="feature-card">
+                <h3>🔊 Audio Analysis</h3>
+                <p>Combines STFT and CQT spectrograms for comprehensive frequency analysis</p>
+            </div>
+            <div class="feature-card">
+                <h3>🏭 Industrial Grade</h3>
+                <p>Designed for production environments with reliable performance</p>
+            </div>
+        </div>
+        
+        <div class="stats-container">
+            <h2 style="text-align: center; margin-bottom: 1.5rem; color: #333;">Model Specifications</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-number">512</span>
+                    <span class="stat-label">STFT FFT Size</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">84</span>
+                    <span class="stat-label">CQT Frequency Bins</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">256</span>
+                    <span class="stat-label">Dual Frequency Fusion Dimensions</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">16kHz</span>
+                    <span class="stat-label">Sample Rate</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
