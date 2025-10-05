@@ -26,6 +26,7 @@ scripts/train_1.py
 *.png
 *jpg
 *.xlsx
+*.jpg
 Notebooks/test.ipynb
 Notebooks/efficient_stft.ipynb
 Notebooks/densenet_stft.ipynb
